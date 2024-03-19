@@ -7,6 +7,10 @@ use ash::{
     },
     vk, Device, Entry, Instance,
 };
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use ash::vk::{
+    KhrGetPhysicalDeviceProperties2Fn, KhrPortabilityEnumerationFn,
+};
 use egui::{ClippedPrimitive, Context, TextureId, ViewportId};
 use egui_ash_renderer::{Options, Renderer};
 use egui_winit::State;
@@ -604,8 +608,21 @@ fn create_vulkan_instance(
         ash_window::enumerate_required_extensions(window.raw_display_handle())?.to_vec();
     extension_names.push(DebugUtils::name().as_ptr());
 
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    {
+        extension_names.push(KhrPortabilityEnumerationFn::name().as_ptr());
+        extension_names.push(KhrGetPhysicalDeviceProperties2Fn::name().as_ptr());
+    }
+
+    let create_flags = if cfg!(any(target_os = "macos", target_os = "ios")) {
+        vk::InstanceCreateFlags::ENUMERATE_PORTABILITY_KHR
+    } else {
+        vk::InstanceCreateFlags::default()
+    };
+
     let instance_create_info = vk::InstanceCreateInfo::builder()
         .application_info(&app_info)
+        .flags(create_flags)
         .enabled_extension_names(&extension_names);
 
     let instance = unsafe { entry.create_instance(&instance_create_info, None)? };
