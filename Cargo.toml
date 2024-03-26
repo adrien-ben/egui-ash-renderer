@@ -7,7 +7,7 @@ homepage = "https://github.com/adrien-ben/egui-ash-renderer"
 repository = "https://github.com/adrien-ben/egui-ash-renderer"
 documentation = "https://docs.rs/egui-ash-renderer"
 license = "MIT"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Adrien Bennadji <adrien.bennadji@live.fr>"]
 edition = "2021"
 
@@ -19,7 +19,7 @@ exclude = [
 [dependencies]
 thiserror = "1.0"
 log = "0.4"
-egui = { version = "0.26", default-features = false }
+egui = { version = ">=0.26, <=0.27", default-features = false }
 ash = { version = ">=0.34, <=0.37", default-features = false, features = ["debug"] }
 ultraviolet = "0.9"
 
@@ -39,8 +39,8 @@ ash = { version = "0.37", default-features = false, features = ["debug", "linked
 ash-window = "0.12"
 raw-window-handle = "0.5"
 image = "0.24"
-egui = "0.26"
-egui-winit = "0.26"
-egui_demo_lib = "0.26"
-egui_extras = { version = "0.26", default-features = false, features = ["all_loaders"] }
+egui = "0.27"
+egui-winit = "0.27"
+egui_demo_lib = "0.27"
+egui_extras = { version = "0.27", default-features = false, features = ["all_loaders"] }
 egui-ash-renderer = { path = ".", features = []}
