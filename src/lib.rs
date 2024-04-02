@@ -33,7 +33,7 @@
 //!
 //! You can indicate wether you will target an sRGB framebuffer or not by passing the option `srgb_framebuffer` when initializing the renderer.
 //! When you target an sRGB framebuffer, the fragment shader will output linear color values, otherwise it will convert the colors to sRGB.
-//! 
+//!
 //! ### Managed textures
 //!
 //! Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and
