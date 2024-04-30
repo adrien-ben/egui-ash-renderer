@@ -10,7 +10,6 @@ use egui::{
     ClippedPrimitive, ImageData, TextureId,
 };
 use mesh::*;
-use ultraviolet::projection::orthographic_vk;
 use vulkan::*;
 
 use self::allocator::Allocator;
@@ -513,13 +512,16 @@ impl Renderer {
             )
         };
 
+        let screen_width = extent.width as f32;
+        let screen_height = extent.height as f32;
+
         unsafe {
             self.device.cmd_set_viewport(
                 command_buffer,
                 0,
                 &[vk::Viewport {
-                    width: extent.width as f32,
-                    height: extent.height as f32,
+                    width: screen_width,
+                    height: screen_height,
                     max_depth: 1.0,
                     ..Default::default()
                 }],
@@ -529,9 +531,9 @@ impl Renderer {
         // Ortho projection
         let projection = orthographic_vk(
             0.0,
-            extent.width as f32 / pixels_per_point,
+            screen_width / pixels_per_point,
             0.0,
-            -(extent.height as f32 / pixels_per_point),
+            -(screen_height / pixels_per_point),
             -1.0,
             1.0,
         );
@@ -579,8 +581,8 @@ impl Renderer {
                             y: (clip_y as i32).max(0),
                         },
                         extent: vk::Extent2D {
-                            width: clip_w as _,
-                            height: clip_h as _,
+                            width: clip_w.min(screen_width) as _,
+                            height: clip_h.min(screen_height) as _,
                         },
                     }];
 
@@ -843,4 +845,37 @@ mod mesh {
 
         indices
     }
+}
+
+/// Orthographic projection matrix for use with Vulkan.
+///
+/// This matrix is meant to be used when the source coordinate space is right-handed and y-up
+/// (the standard computer graphics coordinate space)and the destination space is right-handed
+/// and y-down, with Z (depth) clip extending from 0.0 (close) to 1.0 (far).
+///
+/// from: https://github.com/fu5ha/ultraviolet (to limit dependencies)
+#[inline]
+pub fn orthographic_vk(
+    left: f32,
+    right: f32,
+    bottom: f32,
+    top: f32,
+    near: f32,
+    far: f32,
+) -> [f32; 16] {
+    let rml = right - left;
+    let rpl = right + left;
+    let tmb = top - bottom;
+    let tpb = top + bottom;
+    let fmn = far - near;
+
+    #[rustfmt::skip]
+    let res = [
+        2.0 / rml, 0.0, 0.0, 0.0,
+        0.0, -2.0 / tmb, 0.0, 0.0,
+        0.0, 0.0, -1.0 / fmn, 0.0,
+        -(rpl / rml), -(tpb / tmb), -(near / fmn), 1.0
+    ];
+
+    res
 }
