@@ -256,9 +256,8 @@ impl Renderer {
 
     /// Change the render pass to render to.
     ///
-    /// Useful if you need to render to a new render pass but don't want to rebuild
-    /// the entire renderer. It will rebuild the graphics pipeline from scratch so it
-    /// is an expensive operation.
+    /// Useful if you need to render to a new render pass.
+    /// It will rebuild the graphics pipeline from scratch so it is an expensive operation.
     ///
     /// # Arguments
     ///
@@ -274,6 +273,33 @@ impl Renderer {
             &self.device,
             self.pipeline_layout,
             render_pass,
+            self.options,
+        )?;
+        Ok(())
+    }
+
+    /// Change the dynamic rendering parameters.
+    ///
+    /// Useful if you need to render to a target of with another color/depth format.
+    /// It will rebuild the graphics pipeline from scratch so it is an expensive operation.
+    ///
+    /// # Arguments
+    ///
+    /// * `dynamic_rendering` - The new dynamic rendering parameters.
+    ///
+    /// # Errors
+    ///
+    /// * [`RendererError`] - If any Vulkan error is encountered during pipeline creation.
+    #[cfg(feature = "dynamic-rendering")]
+    pub fn set_dynamic_rendering(
+        &mut self,
+        dynamic_rendering: DynamicRendering,
+    ) -> RendererResult<()> {
+        unsafe { self.device.destroy_pipeline(self.pipeline, None) };
+        self.pipeline = create_vulkan_pipeline(
+            &self.device,
+            self.pipeline_layout,
+            dynamic_rendering,
             self.options,
         )?;
         Ok(())

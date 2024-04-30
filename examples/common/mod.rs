@@ -1,15 +1,13 @@
 pub mod vulkan;
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use ash::vk::{KhrGetPhysicalDeviceProperties2Fn, KhrPortabilityEnumerationFn};
 use ash::{
     extensions::{
         ext::DebugUtils,
         khr::{Surface, Swapchain as SwapchainLoader},
     },
     vk, Device, Entry, Instance,
-};
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-use ash::vk::{
-    KhrGetPhysicalDeviceProperties2Fn, KhrPortabilityEnumerationFn,
 };
 use egui::{ClippedPrimitive, Context, TextureId, ViewportId};
 use egui_ash_renderer::{Options, Renderer};
