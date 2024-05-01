@@ -100,7 +100,7 @@ pub mod texture {
     impl Texture {
         /// Create a texture from an `u8` array containing an rgba image.
         ///
-        /// The image data is device local and it's format is R8G8B8A8_UNORM.
+        /// The image data is device local.
         ///     
         /// # Arguments
         ///
@@ -110,6 +110,7 @@ pub mod texture {
         /// * `mem_properties` - The memory properties of the Vulkan physical device.
         /// * `width` - The width of the image.
         /// * `height` - The height of the image.
+        /// * `format` - The format of the image.
         /// * `data` - The image data.
         #[allow(dead_code)]
         pub fn from_rgba8(
@@ -119,11 +120,12 @@ pub mod texture {
             mem_properties: vk::PhysicalDeviceMemoryProperties,
             width: u32,
             height: u32,
+            format: vk::Format,
             data: &[u8],
         ) -> RendererResult<Self> {
             let (texture, staging_buff, staging_mem) =
                 execute_one_time_commands(device, transfer_queue, command_pool, |buffer| {
-                    Self::cmd_from_rgba(device, buffer, mem_properties, width, height, data)
+                    Self::cmd_from_rgba(device, buffer, mem_properties, width, height, format, data)
                 })??;
 
             unsafe {
@@ -140,6 +142,7 @@ pub mod texture {
             mem_properties: vk::PhysicalDeviceMemoryProperties,
             width: u32,
             height: u32,
+            format: vk::Format,
             data: &[u8],
         ) -> RendererResult<(Self, vk::Buffer, vk::DeviceMemory)> {
             let (buffer, buffer_mem) = create_and_fill_buffer(
@@ -161,7 +164,7 @@ pub mod texture {
                     .extent(extent)
                     .mip_levels(1)
                     .array_layers(1)
-                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .format(format)
                     .tiling(vk::ImageTiling::OPTIMAL)
                     .initial_layout(vk::ImageLayout::UNDEFINED)
                     .usage(vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED)
@@ -270,7 +273,7 @@ pub mod texture {
                 let create_info = vk::ImageViewCreateInfo::builder()
                     .image(image)
                     .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .format(format)
                     .subresource_range(vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
                         base_mip_level: 0,

@@ -39,7 +39,7 @@ pub trait Allocate {
 
     /// Create a Vulkan image.
     ///
-    /// This creates a 2D RGBA8_UNORM image with TRANSFER_DST and SAMPLED flags.
+    /// This creates a 2D RGBA8_SRGB image with TRANSFER_DST and SAMPLED flags.
     ///
     /// # Arguments
     ///

@@ -117,7 +117,10 @@ impl App {
                 Arc::new(Mutex::new(allocator)),
                 vulkan_context.device.clone(),
                 swapchain.render_pass,
-                Options::default(),
+                Options {
+                    srgb_framebuffer: true,
+                    ..Default::default()
+                },
             )?
         };
 
@@ -138,7 +141,10 @@ impl App {
                 Arc::new(Mutex::new(allocator)),
                 vulkan_context.device.clone(),
                 swapchain.render_pass,
-                Options::default(),
+                Options {
+                    srgb_framebuffer: true,
+                    ..Default::default()
+                },
             )?
         };
 
@@ -148,7 +154,10 @@ impl App {
             vulkan_context.physical_device,
             vulkan_context.device.clone(),
             swapchain.render_pass,
-            Options::default(),
+            Options {
+                srgb_framebuffer: true,
+                ..Default::default()
+            },
         )?;
 
         Ok(Self {
@@ -806,20 +815,14 @@ fn create_vulkan_swapchain(
                 vulkan_context.surface_khr,
             )?
         };
-        if formats.len() == 1 && formats[0].format == vk::Format::UNDEFINED {
-            vk::SurfaceFormatKHR {
-                format: vk::Format::B8G8R8A8_UNORM,
-                color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
-            }
-        } else {
-            *formats
-                .iter()
-                .find(|format| {
-                    format.format == vk::Format::B8G8R8A8_UNORM
-                        && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
-                })
-                .unwrap_or(&formats[0])
-        }
+
+        *formats
+            .iter()
+            .find(|format| {
+                format.format == vk::Format::R8G8B8A8_SRGB
+                    && format.color_space == vk::ColorSpaceKHR::SRGB_NONLINEAR
+            })
+            .unwrap_or(&formats[0])
     };
     log::debug!("Swapchain format: {format:?}");
 
@@ -1024,7 +1027,7 @@ fn record_command_buffers(
         })
         .clear_values(&[vk::ClearValue {
             color: vk::ClearColorValue {
-                float32: [0.105, 0.105, 0.105, 1.0],
+                float32: [0.007, 0.007, 0.007, 1.0],
             },
         }]);
 

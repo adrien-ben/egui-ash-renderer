@@ -48,6 +48,10 @@ pub struct Options {
     /// Note that depth writes are always disabled when enable_depth_test is false.
     /// See <https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPipelineDepthStencilStateCreateInfo.html>
     pub enable_depth_write: bool,
+    /// Is the target framebuffer sRGB.
+    ///
+    /// If not, the fragment shader converts colors to sRGB, otherwise it outputs color in linear space.
+    pub srgb_framebuffer: bool,
 }
 
 impl Default for Options {
@@ -56,6 +60,7 @@ impl Default for Options {
             in_flight_frames: 1,
             enable_depth_test: false,
             enable_depth_write: false,
+            srgb_framebuffer: false,
         }
     }
 }

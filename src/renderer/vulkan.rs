@@ -6,7 +6,10 @@
 use crate::{Options, RendererResult};
 use ash::{vk, Device};
 pub(crate) use buffer::*;
-use std::{ffi::CString, mem};
+use std::{
+    ffi::CString,
+    mem::{self, size_of},
+};
 pub(crate) use texture::*;
 
 #[cfg(feature = "dynamic-rendering")]
@@ -75,6 +78,17 @@ pub(crate) fn create_vulkan_pipeline(
     let fragment_create_info = vk::ShaderModuleCreateInfo::builder().code(&fragment_source);
     let fragment_module = unsafe { device.create_shader_module(&fragment_create_info, None)? };
 
+    let specialization_entries = [vk::SpecializationMapEntry {
+        constant_id: 0,
+        offset: 0,
+        size: size_of::<vk::Bool32>(),
+    }];
+    let data = [vk::Bool32::from(options.srgb_framebuffer)];
+    let data_raw = unsafe { any_as_u8_slice(&data) };
+    let specialization_info = vk::SpecializationInfo::builder()
+        .map_entries(&specialization_entries)
+        .data(data_raw);
+
     let shader_states_infos = [
         vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::VERTEX)
@@ -84,6 +98,7 @@ pub(crate) fn create_vulkan_pipeline(
         vk::PipelineShaderStageCreateInfo::builder()
             .stage(vk::ShaderStageFlags::FRAGMENT)
             .module(fragment_module)
+            .specialization_info(&specialization_info)
             .name(&entry_point_name)
             .build(),
     ];
@@ -364,7 +379,7 @@ mod texture {
                 let create_info = vk::ImageViewCreateInfo::builder()
                     .image(image)
                     .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(vk::Format::R8G8B8A8_UNORM)
+                    .format(vk::Format::R8G8B8A8_SRGB)
                     .subresource_range(vk::ImageSubresourceRange {
                         aspect_mask: vk::ImageAspectFlags::COLOR,
                         base_mip_level: 0,

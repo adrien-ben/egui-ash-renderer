@@ -21,22 +21,27 @@ This is meant to add support for egui in your existing Vulkan/ash applications. 
 
 The renderer records drawing command to a command buffer supplied by the application. Here is a little breakdown of the features of this crate and how they work.
 
-- Vertex/Index buffers
+### Vertex/Index buffers
 
 The renderer creates a vertex buffer and a index buffer that will be updated every time
 `Renderer::cmd_draw` is called. If the vertex/index count is more than what the buffers can
 actually hold then the buffers are resized (actually destroyed then re-created).
 
-- Frames in flight
+### Frames in flight
 
 The renderer support having multiple frames in flight. You need to specify the number of frames
 during initialization of the renderer. The renderer manages one vertex and index buffer per frame.
 
-- No draw call execution
+### No draw call execution
 
 The `Renderer::cmd_draw` only record commands to a command buffer supplied by the application. It does not submit anything to the gpu.
 
-- Managed textures
+### sRGB/Linear framebuffer
+
+You can indicate wether you will target an sRGB framebuffer or not by passing the option `srgb_framebuffer` when initializing the renderer.
+When you target an sRGB framebuffer, the fragment shader will output linear color values, otherwise it will convert the colors to sRGB.
+
+### Managed textures
 
 Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and 
 `Renderer::free_textures`. The former must be call before submitting the command buffer for rendering and the latter must be
@@ -59,7 +64,7 @@ renderer.free_textures(output.textures_delta.free.as_slice()).unwrap();
 > If you have multiple frames in flight you might want to hold a set of textures to free for each frame and call 
 `Renderer::free_textures` after waiting for the fence of the previous frame.
 
-- Custom textures
+### Custom textures
 
 You can also render used managed textures in egui. You just need to call `Renderer::add_user_texture` and pass a
 `vk::DescriptorSet` compatible with the layout used in the renderer's graphics pipeline 
