@@ -16,6 +16,7 @@ use self::allocator::Allocator;
 
 #[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
 use ash::Instance;
+use log::log;
 
 #[cfg(feature = "gpu-allocator")]
 use {
@@ -89,7 +90,7 @@ pub struct Renderer {
     descriptor_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
     managed_textures: HashMap<TextureId, Texture>,
-    textures: HashMap<TextureId, vk::DescriptorSet>,
+    textures: HashMap<TextureId, (vk::DescriptorSet, bool)>,
     next_user_texture_id: u64,
     options: Options,
     frames: Option<Frames>,
@@ -401,7 +402,7 @@ impl Renderer {
                 if let Some(previous) = self.managed_textures.insert(*id, texture) {
                     previous.destroy(&self.device, &mut self.allocator)?;
                 }
-                if let Some(previous) = self.textures.insert(*id, set) {
+                if let Some((previous, _)) = self.textures.insert(*id, (set, false)) {
                     unsafe {
                         self.device
                             .free_descriptor_sets(self.descriptor_pool, &[previous])?
@@ -431,7 +432,7 @@ impl Renderer {
             if let Some(texture) = self.managed_textures.remove(id) {
                 texture.destroy(&self.device, &mut self.allocator)?;
             }
-            if let Some(set) = self.textures.remove(id) {
+            if let Some((set, _)) = self.textures.remove(id) {
                 unsafe {
                     self.device
                         .free_descriptor_sets(self.descriptor_pool, &[set])?
@@ -455,10 +456,10 @@ impl Renderer {
     ///
     /// Provided `vk::DescriptorSet`s must be created with a descriptor set layout that is compatible with the one used by the renderer.
     /// See [Pipeline Layout Compatibility](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#descriptorsets-compatibility).
-    pub fn add_user_texture(&mut self, set: vk::DescriptorSet) -> TextureId {
+    pub fn add_user_texture(&mut self, set: vk::DescriptorSet, bgr_format: bool) -> TextureId {
         let id = TextureId::User(self.next_user_texture_id);
         self.next_user_texture_id += 1;
-        self.textures.insert(id, set);
+        self.textures.insert(id, (set, bgr_format));
 
         id
     }
@@ -473,6 +474,8 @@ impl Renderer {
     pub fn remove_user_texture(&mut self, id: TextureId) {
         self.textures.remove(&id);
     }
+
+
 
     /// Record commands to render the [`egui::Ui`].
     ///
@@ -542,16 +545,6 @@ impl Renderer {
             -1.0,
             1.0,
         );
-        unsafe {
-            let push = any_as_u8_slice(&projection);
-            self.device.cmd_push_constants(
-                command_buffer,
-                self.pipeline_layout,
-                vk::ShaderStageFlags::VERTEX,
-                0,
-                push,
-            )
-        };
 
         unsafe {
             self.device.cmd_bind_index_buffer(
@@ -596,7 +589,7 @@ impl Renderer {
                     }
 
                     if Some(m.texture_id) != current_texture_id {
-                        let descriptor_set = *self
+                        let (descriptor_set, bgr_format) = *self
                             .textures
                             .get(&m.texture_id)
                             .ok_or(RendererError::BadTexture(m.texture_id))?;
@@ -612,6 +605,22 @@ impl Renderer {
                             )
                         };
                         current_texture_id = Some(m.texture_id);
+
+                        unsafe {
+                            let push = Push {
+                                projection,
+                                bgr_format: if bgr_format { 1 } else { 0 },
+                            };
+
+                            let data = any_as_u8_slice(&push);
+                            self.device.cmd_push_constants(
+                                command_buffer,
+                                self.pipeline_layout,
+                                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+                                0,
+                                data,
+                            )
+                        };
                     }
 
                     let index_count = m.indices.len() as u32;

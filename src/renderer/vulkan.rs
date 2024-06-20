@@ -39,16 +39,23 @@ pub fn create_vulkan_descriptor_set_layout(
     unsafe { Ok(device.create_descriptor_set_layout(&descriptor_set_create_info, None)?) }
 }
 
+#[repr(C)]
+pub(crate) struct Push {
+    pub projection: [f32; 16],
+    pub bgr_format: u32,
+}
+
 pub(crate) fn create_vulkan_pipeline_layout(
     device: &Device,
     descriptor_set_layout: vk::DescriptorSetLayout,
 ) -> RendererResult<vk::PipelineLayout> {
     log::debug!("Creating vulkan pipeline layout");
-    let push_const_range = [vk::PushConstantRange {
-        stage_flags: vk::ShaderStageFlags::VERTEX,
-        offset: 0,
-        size: mem::size_of::<[f32; 16]>() as u32,
-    }];
+    let push_const_range = [
+        vk::PushConstantRange {
+            stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            offset: 0,
+            size: size_of::<Push>() as u32},
+    ];
 
     let descriptor_set_layouts = [descriptor_set_layout];
     let layout_info = vk::PipelineLayoutCreateInfo::builder()
