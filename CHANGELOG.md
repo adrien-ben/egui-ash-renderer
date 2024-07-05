@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+- egui >=0.26, <=0.28
+
 ## 0.3.0
 
 - dev: bump simple_logger to 5.0

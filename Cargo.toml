@@ -7,7 +7,7 @@ homepage = "https://github.com/adrien-ben/egui-ash-renderer"
 repository = "https://github.com/adrien-ben/egui-ash-renderer"
 documentation = "https://docs.rs/egui-ash-renderer"
 license = "MIT"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Adrien Bennadji <adrien.bennadji@live.fr>"]
 edition = "2021"
 
