@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.5.0
+
+- ash 0.38
+- vk-mem 0.4
+- gpu-allocator 0.27
+
 ## 0.4.0
 
 - egui >=0.26, <=0.28
