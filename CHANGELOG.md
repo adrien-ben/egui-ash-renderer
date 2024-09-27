@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- egui >=0.26, <=0.29
+- examples: winit 0.30
+
 ## 0.5.0
 
 - ash 0.38
