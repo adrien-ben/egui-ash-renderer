@@ -8,7 +8,11 @@
 //!
 //! | crate  | egui         | ash          | gpu-allocator (feature) | vk-mem (feature) |
 //! |--------|--------------|--------------|-------------------------|------------------|
-//! | 0.3.0  | [0.26, 0.27] | [0.34, 0.37] | [0.25, 0.26]            | 0.3.0            |
+//! | 0.8.0  | [0.26, 0.31] | 0.38         | 0.27                    | 0.4              |
+//! | 0.7.0  | [0.26, 0.30] | 0.38         | 0.27                    | 0.4              |
+//! | 0.6.0  | [0.26, 0.29] | 0.38         | 0.27                    | 0.4              |
+//! | 0.5.0  | [0.26, 0.28] | 0.38         | 0.27                    | 0.4              |
+//! | 0.4.0  | [0.26, 0.28] | [0.34, 0.37] | [0.25, 0.26]            | 0.3              |
 //!
 //! ## How it works
 //!
@@ -33,7 +37,7 @@
 //!
 //! You can indicate wether you will target an sRGB framebuffer or not by passing the option `srgb_framebuffer` when initializing the renderer.
 //! When you target an sRGB framebuffer, the fragment shader will output linear color values, otherwise it will convert the colors to sRGB.
-//! 
+//!
 //! ### Managed textures
 //!
 //! Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and

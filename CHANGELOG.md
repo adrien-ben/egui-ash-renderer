@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.8.0
+
+- egui >=0.26, <=0.31
+
+## 0.7.0
+
+- egui >=0.26, <=0.30
+- thiserror 2
+
+## 0.6.0
+
+- egui >=0.26, <=0.29
+- examples: winit 0.30
+
+## 0.5.0
+
+- ash 0.38
+- vk-mem 0.4
+- gpu-allocator 0.27
+
+## 0.4.0
+
+- egui >=0.26, <=0.28
+
 ## 0.3.0
 
 - dev: bump simple_logger to 5.0

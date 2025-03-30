@@ -3,26 +3,25 @@ pub mod vulkan;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use ash::vk::{KhrGetPhysicalDeviceProperties2Fn, KhrPortabilityEnumerationFn};
 use ash::{
-    extensions::{
-        ext::DebugUtils,
-        khr::{Surface, Swapchain as SwapchainLoader},
-    },
+    ext::debug_utils,
+    khr::{surface, swapchain},
     vk, Device, Entry, Instance,
 };
 use egui::{ClippedPrimitive, Context, TextureId, ViewportId};
 use egui_ash_renderer::{Options, Renderer};
 use egui_winit::State;
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
+use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
     error::Error,
     ffi::{CStr, CString},
     os::raw::c_void,
 };
 use winit::{
+    application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{Event, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::{Window, WindowBuilder},
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    window::{Window, WindowId},
 };
 #[cfg(feature = "gpu-allocator")]
 use {
@@ -38,31 +37,99 @@ use {
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 1024;
 
-pub struct App {
-    window: Window,
-    event_loop: EventLoop<()>,
-    pub vulkan_context: VulkanContext,
+pub trait App {
+    fn title() -> &'static str;
+    fn new(app: &mut System) -> Self;
+    fn build_ui(&mut self, ctx: &Context);
+    fn clean(&mut self, vulkan_ctx: &VulkanContext) {
+        let _ = vulkan_ctx;
+    }
+}
+
+pub fn run_app<A: App>() -> Result<(), Box<dyn Error>> {
+    let event_loop = EventLoop::new()?;
+    event_loop.set_control_flow(ControlFlow::Poll);
+
+    let mut app: AppWrapper<A> = AppWrapper {
+        title: A::title(),
+        window: None,
+        app: None,
+        egui_app: None,
+    };
+
+    event_loop.run_app(&mut app)?;
+
+    Ok(())
+}
+
+struct AppWrapper<A: App> {
+    title: &'static str,
+    window: Option<Window>,
+    app: Option<System>,
+    egui_app: Option<A>,
+}
+
+impl<A: App> ApplicationHandler for AppWrapper<A> {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let window = create_window(self.title, event_loop).unwrap();
+        let mut app = System::new(self.title, &window).unwrap();
+        let egui_app = A::new(&mut app);
+
+        self.window = Some(window);
+        self.app = Some(app);
+        self.egui_app = Some(egui_app)
+    }
+
+    fn about_to_wait(&mut self, _: &ActiveEventLoop) {
+        self.app.as_mut().unwrap().draw(
+            self.egui_app.as_mut().unwrap(),
+            self.window.as_ref().unwrap(),
+        );
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+        self.app.as_mut().unwrap().on_window_event(
+            &event,
+            self.window.as_ref().unwrap(),
+            event_loop,
+        );
+    }
+
+    fn exiting(&mut self, _: &ActiveEventLoop) {
+        self.app
+            .as_mut()
+            .unwrap()
+            .on_exit(self.egui_app.as_mut().unwrap());
+    }
+}
+
+pub struct System {
     command_buffer: vk::CommandBuffer,
     swapchain: Swapchain,
     image_available_semaphore: vk::Semaphore,
     render_finished_semaphore: vk::Semaphore,
     fence: vk::Fence,
 
+    run: bool,
+    dirty_swapchain: bool,
+
     pub egui_ctx: Context,
     pub egui_winit: State,
     pub renderer: Renderer,
+
+    textures_to_free: Option<Vec<TextureId>>,
+
+    pub vulkan_context: VulkanContext,
 }
 
-impl App {
-    pub fn new(title: &str) -> Result<Self, Box<dyn Error>> {
+impl System {
+    pub fn new(title: &str, window: &Window) -> Result<Self, Box<dyn Error>> {
         log::info!("Create application");
-        // Setup window
-        let (window, event_loop) = create_window(title)?;
 
         let vulkan_context = VulkanContext::new(&window, title)?;
 
         let command_buffer = {
-            let allocate_info = vk::CommandBufferAllocateInfo::builder()
+            let allocate_info = vk::CommandBufferAllocateInfo::default()
                 .command_pool(vulkan_context.command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY)
                 .command_buffer_count(1);
@@ -78,7 +145,7 @@ impl App {
 
         // Semaphore use for presentation
         let image_available_semaphore = {
-            let semaphore_info = vk::SemaphoreCreateInfo::builder();
+            let semaphore_info = vk::SemaphoreCreateInfo::default();
             unsafe {
                 vulkan_context
                     .device
@@ -86,7 +153,7 @@ impl App {
             }
         };
         let render_finished_semaphore = {
-            let semaphore_info = vk::SemaphoreCreateInfo::builder();
+            let semaphore_info = vk::SemaphoreCreateInfo::default();
             unsafe {
                 vulkan_context
                     .device
@@ -94,13 +161,20 @@ impl App {
             }
         };
         let fence = {
-            let fence_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+            let fence_info = vk::FenceCreateInfo::default().flags(vk::FenceCreateFlags::SIGNALED);
             unsafe { vulkan_context.device.create_fence(&fence_info, None)? }
         };
 
         let egui_ctx = Context::default();
         egui_extras::install_image_loaders(&egui_ctx);
-        let egui_winit = State::new(egui_ctx.clone(), ViewportId::ROOT, &window, None, None);
+        let egui_winit = State::new(
+            egui_ctx.clone(),
+            ViewportId::ROOT,
+            &window,
+            None,
+            None,
+            None,
+        );
 
         #[cfg(feature = "gpu-allocator")]
         let renderer = {
@@ -131,10 +205,9 @@ impl App {
                     &vulkan_context.instance,
                     &vulkan_context.device,
                     vulkan_context.physical_device,
-                )
-                .vulkan_api_version(vk::make_api_version(0, 1, 0, 0));
+                );
 
-                Allocator::new(allocator_create_info)?
+                unsafe { Allocator::new(allocator_create_info)? }
             };
 
             Renderer::with_vk_mem_allocator(
@@ -161,260 +234,228 @@ impl App {
         )?;
 
         Ok(Self {
-            window,
-            event_loop,
             vulkan_context,
             command_buffer,
             swapchain,
             image_available_semaphore,
             render_finished_semaphore,
             fence,
+
+            run: true,
+            dirty_swapchain: false,
+
             egui_ctx,
             egui_winit,
             renderer,
+
+            textures_to_free: None,
         })
     }
 
-    pub fn run<B, C>(self, mut ui_builder: B, mut cleaner: C) -> Result<(), Box<dyn Error>>
-    where
-        B: FnMut(&mut bool, &Context) + 'static,
-        C: FnMut(&VulkanContext) + 'static,
-    {
-        log::info!("Starting application");
-
-        let Self {
-            window,
-            event_loop,
-            vulkan_context,
-            command_buffer,
-            mut swapchain,
-            image_available_semaphore,
-            render_finished_semaphore,
-            fence,
-            egui_ctx,
-            mut egui_winit,
-            mut renderer,
-            ..
-        } = self;
-
-        let mut run = true;
-        let mut dirty_swapchain = false;
-
-        let mut textures_to_free: Option<Vec<TextureId>> = None;
-
-        // Main loop
-        event_loop.run(move |event, elwt| {
-            let mut renderer = &mut renderer; // Makes sure Renderer is moved before VulkanContext and therefore dropped before
-
-            match event {
-                // New frame
-                Event::NewEvents(_) => {}
-                // End of event processing
-                Event::AboutToWait => {
-                    // If swapchain must be recreated wait for windows to not be minimized anymore
-                    if dirty_swapchain {
-                        let PhysicalSize { width, height } = window.inner_size();
-                        if width > 0 && height > 0 {
-                            swapchain
-                                .recreate(&vulkan_context)
-                                .expect("Failed to recreate swapchain");
-                            renderer
-                                .set_render_pass(swapchain.render_pass)
-                                .expect("Failed to rebuild renderer pipeline");
-                            dirty_swapchain = false;
-                        } else {
-                            return;
-                        }
-                    }
-
-                    if !run {
-                        return;
-                    }
-
-                    unsafe {
-                        vulkan_context
-                            .device
-                            .wait_for_fences(&[fence], true, std::u64::MAX)
-                            .expect("Failed to wait ")
-                    };
-
-                    // Free last frames textures after the previous frame is done rendering
-                    if let Some(textures) = textures_to_free.take() {
-                        renderer
-                            .free_textures(&textures)
-                            .expect("Failed to free textures");
-                    }
-
-                    // Generate UI
-                    let raw_input = egui_winit.take_egui_input(&window);
-
-                    let egui::FullOutput {
-                        platform_output,
-                        textures_delta,
-                        shapes,
-                        pixels_per_point,
-                        ..
-                    } = egui_ctx.run(raw_input, |ctx| {
-                        ui_builder(&mut run, ctx);
-                    });
-
-                    egui_winit.handle_platform_output(&window, platform_output);
-
-                    if !textures_delta.free.is_empty() {
-                        textures_to_free = Some(textures_delta.free.clone());
-                    }
-
-                    if !textures_delta.set.is_empty() {
-                        renderer
-                            .set_textures(
-                                vulkan_context.graphics_queue,
-                                vulkan_context.command_pool,
-                                textures_delta.set.as_slice(),
-                            )
-                            .expect("Failed to update texture");
-                    }
-
-                    let clipped_primitives = egui_ctx.tessellate(shapes, pixels_per_point);
-
-                    // Drawing the frame
-                    let next_image_result = unsafe {
-                        swapchain.loader.acquire_next_image(
-                            swapchain.khr,
-                            std::u64::MAX,
-                            image_available_semaphore,
-                            vk::Fence::null(),
-                        )
-                    };
-                    let image_index = match next_image_result {
-                        Ok((image_index, _)) => image_index,
-                        Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                            dirty_swapchain = true;
-                            return;
-                        }
-                        Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
-                    };
-
-                    unsafe {
-                        vulkan_context
-                            .device
-                            .reset_fences(&[fence])
-                            .expect("Failed to reset fences")
-                    };
-
-                    let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
-                    let wait_semaphores = [image_available_semaphore];
-                    let signal_semaphores = [render_finished_semaphore];
-
-                    // Re-record commands to draw geometry
-                    record_command_buffers(
-                        &vulkan_context.device,
-                        vulkan_context.command_pool,
-                        command_buffer,
-                        swapchain.framebuffers[image_index as usize],
-                        swapchain.render_pass,
-                        swapchain.extent,
-                        pixels_per_point,
-                        &mut renderer,
-                        &clipped_primitives,
-                    )
-                    .expect("Failed to record command buffer");
-
-                    let command_buffers = [command_buffer];
-                    let submit_info = [vk::SubmitInfo::builder()
-                        .wait_semaphores(&wait_semaphores)
-                        .wait_dst_stage_mask(&wait_stages)
-                        .command_buffers(&command_buffers)
-                        .signal_semaphores(&signal_semaphores)
-                        .build()];
-                    unsafe {
-                        vulkan_context
-                            .device
-                            .queue_submit(vulkan_context.graphics_queue, &submit_info, fence)
-                            .expect("Failed to submit work to gpu.")
-                    };
-
-                    let swapchains = [swapchain.khr];
-                    let images_indices = [image_index];
-                    let present_info = vk::PresentInfoKHR::builder()
-                        .wait_semaphores(&signal_semaphores)
-                        .swapchains(&swapchains)
-                        .image_indices(&images_indices);
-
-                    let present_result = unsafe {
-                        swapchain
-                            .loader
-                            .queue_present(vulkan_context.present_queue, &present_info)
-                    };
-                    match present_result {
-                        Ok(is_suboptimal) if is_suboptimal => {
-                            dirty_swapchain = true;
-                        }
-                        Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
-                            dirty_swapchain = true;
-                        }
-                        Err(error) => panic!("Failed to present queue. Cause: {}", error),
-                        _ => {}
-                    }
-                }
-                // Window events
-                Event::WindowEvent { event, .. } => {
-                    let _ = egui_winit.on_window_event(&window, &event);
-
-                    match event {
-                        // Resizing
-                        WindowEvent::Resized(new_size) => {
-                            log::debug!("Window was resized. New size is {new_size:?}");
-                            dirty_swapchain = true;
-                        }
-                        // Exit
-                        WindowEvent::CloseRequested => {
-                            run = false;
-                            elwt.exit();
-                        }
-                        _ => (),
-                    }
-                }
-                // Cleanup
-                Event::LoopExiting => {
-                    log::info!("Stopping application");
-
-                    unsafe {
-                        vulkan_context
-                            .device
-                            .device_wait_idle()
-                            .expect("Failed to wait for graphics device to idle.");
-
-                        cleaner(&vulkan_context);
-
-                        vulkan_context.device.destroy_fence(fence, None);
-                        vulkan_context
-                            .device
-                            .destroy_semaphore(image_available_semaphore, None);
-                        vulkan_context
-                            .device
-                            .destroy_semaphore(render_finished_semaphore, None);
-
-                        swapchain.destroy(&vulkan_context);
-
-                        vulkan_context
-                            .device
-                            .free_command_buffers(vulkan_context.command_pool, &[command_buffer]);
-                    }
-                }
-                _ => (),
+    fn draw<A: App>(&mut self, egui_app: &mut A, window: &Window) {
+        // If swapchain must be recreated wait for windows to not be minimized anymore
+        if self.dirty_swapchain {
+            let PhysicalSize { width, height } = window.inner_size();
+            if width > 0 && height > 0 {
+                self.swapchain
+                    .recreate(&self.vulkan_context)
+                    .expect("Failed to recreate swapchain");
+                self.renderer
+                    .set_render_pass(self.swapchain.render_pass)
+                    .expect("Failed to rebuild renderer pipeline");
+                self.dirty_swapchain = false;
+            } else {
+                return;
             }
-        })?;
+        }
 
-        Ok(())
+        if !self.run {
+            return;
+        }
+
+        unsafe {
+            self.vulkan_context
+                .device
+                .wait_for_fences(&[self.fence], true, std::u64::MAX)
+                .expect("Failed to wait ")
+        };
+
+        // Free last frames textures after the previous frame is done rendering
+        if let Some(textures) = self.textures_to_free.take() {
+            self.renderer
+                .free_textures(&textures)
+                .expect("Failed to free textures");
+        }
+
+        // Generate UI
+        let raw_input = self.egui_winit.take_egui_input(&window);
+
+        let egui::FullOutput {
+            platform_output,
+            textures_delta,
+            shapes,
+            pixels_per_point,
+            ..
+        } = self.egui_ctx.run(raw_input, |ctx| {
+            egui_app.build_ui(ctx);
+        });
+
+        self.egui_winit
+            .handle_platform_output(&window, platform_output);
+
+        if !textures_delta.free.is_empty() {
+            self.textures_to_free = Some(textures_delta.free.clone());
+        }
+
+        if !textures_delta.set.is_empty() {
+            self.renderer
+                .set_textures(
+                    self.vulkan_context.graphics_queue,
+                    self.vulkan_context.command_pool,
+                    textures_delta.set.as_slice(),
+                )
+                .expect("Failed to update texture");
+        }
+
+        let clipped_primitives = self.egui_ctx.tessellate(shapes, pixels_per_point);
+
+        // Drawing the frame
+        let next_image_result = unsafe {
+            self.swapchain.loader.acquire_next_image(
+                self.swapchain.khr,
+                std::u64::MAX,
+                self.image_available_semaphore,
+                vk::Fence::null(),
+            )
+        };
+        let image_index = match next_image_result {
+            Ok((image_index, _)) => image_index,
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                self.dirty_swapchain = true;
+                return;
+            }
+            Err(error) => panic!("Error while acquiring next image. Cause: {}", error),
+        };
+
+        unsafe {
+            self.vulkan_context
+                .device
+                .reset_fences(&[self.fence])
+                .expect("Failed to reset fences")
+        };
+
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+        let wait_semaphores = [self.image_available_semaphore];
+        let signal_semaphores = [self.render_finished_semaphore];
+
+        // Re-record commands to draw geometry
+        record_command_buffers(
+            &self.vulkan_context.device,
+            self.vulkan_context.command_pool,
+            self.command_buffer,
+            self.swapchain.framebuffers[image_index as usize],
+            self.swapchain.render_pass,
+            self.swapchain.extent,
+            pixels_per_point,
+            &mut self.renderer,
+            &clipped_primitives,
+        )
+        .expect("Failed to record command buffer");
+
+        let command_buffers = [self.command_buffer];
+        let submit_info = [vk::SubmitInfo::default()
+            .wait_semaphores(&wait_semaphores)
+            .wait_dst_stage_mask(&wait_stages)
+            .command_buffers(&command_buffers)
+            .signal_semaphores(&signal_semaphores)];
+        unsafe {
+            self.vulkan_context
+                .device
+                .queue_submit(self.vulkan_context.graphics_queue, &submit_info, self.fence)
+                .expect("Failed to submit work to gpu.")
+        };
+
+        let swapchains = [self.swapchain.khr];
+        let images_indices = [image_index];
+        let present_info = vk::PresentInfoKHR::default()
+            .wait_semaphores(&signal_semaphores)
+            .swapchains(&swapchains)
+            .image_indices(&images_indices);
+
+        let present_result = unsafe {
+            self.swapchain
+                .loader
+                .queue_present(self.vulkan_context.present_queue, &present_info)
+        };
+        match present_result {
+            Ok(is_suboptimal) if is_suboptimal => {
+                self.dirty_swapchain = true;
+            }
+            Err(vk::Result::ERROR_OUT_OF_DATE_KHR) => {
+                self.dirty_swapchain = true;
+            }
+            Err(error) => panic!("Failed to present queue. Cause: {}", error),
+            _ => {}
+        }
+    }
+
+    fn on_window_event(
+        &mut self,
+        event: &WindowEvent,
+        window: &Window,
+        event_loop: &ActiveEventLoop,
+    ) {
+        let _ = self.egui_winit.on_window_event(&window, &event);
+
+        match event {
+            // Resizing
+            WindowEvent::Resized(new_size) => {
+                log::debug!("Window was resized. New size is {new_size:?}");
+                self.dirty_swapchain = true;
+            }
+            // Exit
+            WindowEvent::CloseRequested => {
+                self.run = false;
+                event_loop.exit();
+            }
+            _ => (),
+        }
+    }
+
+    fn on_exit<A: App>(&mut self, egui_app: &mut A) {
+        log::info!("Stopping application");
+
+        unsafe {
+            self.vulkan_context
+                .device
+                .device_wait_idle()
+                .expect("Failed to wait for graphics device to idle.");
+
+            egui_app.clean(&self.vulkan_context);
+
+            self.vulkan_context.device.destroy_fence(self.fence, None);
+            self.vulkan_context
+                .device
+                .destroy_semaphore(self.image_available_semaphore, None);
+            self.vulkan_context
+                .device
+                .destroy_semaphore(self.render_finished_semaphore, None);
+
+            self.swapchain.destroy(&self.vulkan_context);
+
+            self.vulkan_context
+                .device
+                .free_command_buffers(self.vulkan_context.command_pool, &[self.command_buffer]);
+        }
     }
 }
 
 pub struct VulkanContext {
     _entry: Entry,
     pub instance: Instance,
-    debug_utils: DebugUtils,
+    debug_utils: debug_utils::Instance,
     debug_utils_messenger: vk::DebugUtilsMessengerEXT,
-    surface: Surface,
+    surface: surface::Instance,
     surface_khr: vk::SurfaceKHR,
     pub physical_device: vk::PhysicalDevice,
     graphics_q_index: u32,
@@ -433,13 +474,13 @@ impl VulkanContext {
             create_vulkan_instance(&entry, window, name)?;
 
         // Vulkan surface
-        let surface = Surface::new(&entry, &instance);
+        let surface = surface::Instance::new(&entry, &instance);
         let surface_khr = unsafe {
             ash_window::create_surface(
                 &entry,
                 &instance,
-                window.raw_display_handle(),
-                window.raw_window_handle(),
+                window.display_handle()?.as_raw(),
+                window.window_handle()?.as_raw(),
                 None,
             )?
         };
@@ -463,7 +504,7 @@ impl VulkanContext {
 
         // Command pool & buffer
         let command_pool = {
-            let command_pool_info = vk::CommandPoolCreateInfo::builder()
+            let command_pool_info = vk::CommandPoolCreateInfo::default()
                 .queue_family_index(graphics_q_index)
                 .flags(vk::CommandPoolCreateFlags::empty());
             unsafe { device.create_command_pool(&command_pool_info, None)? }
@@ -502,7 +543,7 @@ impl Drop for VulkanContext {
 }
 
 struct Swapchain {
-    loader: SwapchainLoader,
+    loader: swapchain::Device,
     extent: vk::Extent2D,
     khr: vk::SwapchainKHR,
     images: Vec<vk::Image>,
@@ -582,43 +623,41 @@ impl Swapchain {
     }
 }
 
-fn create_window(title: &str) -> Result<(Window, EventLoop<()>), Box<dyn Error>> {
-    log::debug!("Creating window and event loop");
-    let event_loop = EventLoop::new()?;
-    event_loop.set_control_flow(ControlFlow::Poll);
-    let window = WindowBuilder::new()
-        .with_title(title)
-        .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT))
-        .with_resizable(true)
-        .build(&event_loop)?;
+fn create_window(title: &str, event_loop: &ActiveEventLoop) -> Result<Window, Box<dyn Error>> {
+    log::debug!("Creating window");
 
-    Ok((window, event_loop))
+    let window = event_loop.create_window(
+        Window::default_attributes()
+            .with_title(title)
+            .with_inner_size(PhysicalSize::new(WIDTH, HEIGHT)),
+    )?;
+
+    Ok(window)
 }
 
 fn create_vulkan_instance(
     entry: &Entry,
     window: &Window,
     title: &str,
-) -> Result<(Instance, DebugUtils, vk::DebugUtilsMessengerEXT), Box<dyn Error>> {
+) -> Result<(Instance, debug_utils::Instance, vk::DebugUtilsMessengerEXT), Box<dyn Error>> {
     log::debug!("Creating vulkan instance");
     // Vulkan instance
     let app_name = CString::new(title)?;
-    let engine_name = CString::new("No Engine")?;
-    let app_info = vk::ApplicationInfo::builder()
+    let app_info = vk::ApplicationInfo::default()
         .application_name(app_name.as_c_str())
         .application_version(vk::make_api_version(0, 0, 1, 0))
-        .engine_name(engine_name.as_c_str())
+        .engine_name(c"No Engine")
         .engine_version(vk::make_api_version(0, 0, 1, 0))
         .api_version(vk::make_api_version(0, 1, 0, 0));
 
     let mut extension_names =
-        ash_window::enumerate_required_extensions(window.raw_display_handle())?.to_vec();
-    extension_names.push(DebugUtils::name().as_ptr());
+        ash_window::enumerate_required_extensions(window.display_handle()?.as_raw())?.to_vec();
+    extension_names.push(debug_utils::NAME.as_ptr());
 
     #[cfg(any(target_os = "macos", target_os = "ios"))]
     {
-        extension_names.push(KhrPortabilityEnumerationFn::name().as_ptr());
-        extension_names.push(KhrGetPhysicalDeviceProperties2Fn::name().as_ptr());
+        extension_names.push(ash::khr::portability_enumeration::NAME.as_ptr());
+        extension_names.push(ash::khr::get_physical_device_properties2::NAME.as_ptr());
     }
 
     let create_flags = if cfg!(any(target_os = "macos", target_os = "ios")) {
@@ -627,7 +666,7 @@ fn create_vulkan_instance(
         vk::InstanceCreateFlags::default()
     };
 
-    let instance_create_info = vk::InstanceCreateInfo::builder()
+    let instance_create_info = vk::InstanceCreateInfo::default()
         .application_info(&app_info)
         .flags(create_flags)
         .enabled_extension_names(&extension_names);
@@ -635,7 +674,7 @@ fn create_vulkan_instance(
     let instance = unsafe { entry.create_instance(&instance_create_info, None)? };
 
     // Vulkan debug report
-    let create_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
+    let create_info = vk::DebugUtilsMessengerCreateInfoEXT::default()
         .flags(vk::DebugUtilsMessengerCreateFlagsEXT::empty())
         .message_severity(
             vk::DebugUtilsMessageSeverityFlagsEXT::INFO
@@ -648,7 +687,7 @@ fn create_vulkan_instance(
                 | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
         )
         .pfn_user_callback(Some(vulkan_debug_callback));
-    let debug_utils = DebugUtils::new(entry, &instance);
+    let debug_utils = debug_utils::Instance::new(entry, &instance);
     let debug_utils_messenger =
         unsafe { debug_utils.create_debug_utils_messenger(&create_info, None)? };
 
@@ -675,7 +714,7 @@ unsafe extern "system" fn vulkan_debug_callback(
 
 fn create_vulkan_physical_device_and_get_graphics_and_present_qs_indices(
     instance: &Instance,
-    surface: &Surface,
+    surface: &surface::Instance,
     surface_khr: vk::SurfaceKHR,
 ) -> Result<(vk::PhysicalDevice, u32, u32), Box<dyn Error>> {
     log::debug!("Creating vulkan physical device");
@@ -723,7 +762,7 @@ fn create_vulkan_physical_device_and_get_graphics_and_present_qs_indices(
             };
             let extention_support = extension_props.iter().any(|ext| {
                 let name = unsafe { CStr::from_ptr(ext.extension_name.as_ptr()) };
-                SwapchainLoader::name() == name
+                swapchain::NAME == name
             });
 
             // Does the device have available formats for the given surface
@@ -772,17 +811,20 @@ fn create_vulkan_device_and_graphics_and_present_qs(
         indices
             .iter()
             .map(|index| {
-                vk::DeviceQueueCreateInfo::builder()
+                vk::DeviceQueueCreateInfo::default()
                     .queue_family_index(*index)
                     .queue_priorities(&queue_priorities)
-                    .build()
             })
             .collect::<Vec<_>>()
     };
 
-    let device_extensions_ptrs = [SwapchainLoader::name().as_ptr()];
+    let device_extensions_ptrs = [
+        swapchain::NAME.as_ptr(),
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        ash::khr::portability_subset::NAME.as_ptr(),
+    ];
 
-    let device_create_info = vk::DeviceCreateInfo::builder()
+    let device_create_info = vk::DeviceCreateInfo::default()
         .queue_create_infos(&queue_create_infos)
         .enabled_extension_names(&device_extensions_ptrs);
 
@@ -797,7 +839,7 @@ fn create_vulkan_swapchain(
     vulkan_context: &VulkanContext,
 ) -> Result<
     (
-        SwapchainLoader,
+        swapchain::Device,
         vk::SwapchainKHR,
         vk::Extent2D,
         vk::Format,
@@ -877,7 +919,7 @@ fn create_vulkan_swapchain(
         vulkan_context.present_q_index,
     ];
     let create_info = {
-        let mut builder = vk::SwapchainCreateInfoKHR::builder()
+        let mut builder = vk::SwapchainCreateInfoKHR::default()
             .surface(vulkan_context.surface_khr)
             .min_image_count(image_count)
             .image_format(format.format)
@@ -901,7 +943,7 @@ fn create_vulkan_swapchain(
             .clipped(true)
     };
 
-    let swapchain = SwapchainLoader::new(&vulkan_context.instance, &vulkan_context.device);
+    let swapchain = swapchain::Device::new(&vulkan_context.instance, &vulkan_context.device);
     let swapchain_khr = unsafe { swapchain.create_swapchain(&create_info, None)? };
 
     // Swapchain images and image views
@@ -909,7 +951,7 @@ fn create_vulkan_swapchain(
     let views = images
         .iter()
         .map(|image| {
-            let create_info = vk::ImageViewCreateInfo::builder()
+            let create_info = vk::ImageViewCreateInfo::default()
                 .image(*image)
                 .view_type(vk::ImageViewType::TYPE_2D)
                 .format(format.format)
@@ -940,26 +982,23 @@ fn create_vulkan_render_pass(
     format: vk::Format,
 ) -> Result<vk::RenderPass, Box<dyn Error>> {
     log::debug!("Creating vulkan render pass");
-    let attachment_descs = [vk::AttachmentDescription::builder()
+    let attachment_descs = [vk::AttachmentDescription::default()
         .format(format)
         .samples(vk::SampleCountFlags::TYPE_1)
         .load_op(vk::AttachmentLoadOp::CLEAR)
         .store_op(vk::AttachmentStoreOp::STORE)
         .initial_layout(vk::ImageLayout::UNDEFINED)
-        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
-        .build()];
+        .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)];
 
-    let color_attachment_refs = [vk::AttachmentReference::builder()
+    let color_attachment_refs = [vk::AttachmentReference::default()
         .attachment(0)
-        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-        .build()];
+        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)];
 
-    let subpass_descs = [vk::SubpassDescription::builder()
+    let subpass_descs = [vk::SubpassDescription::default()
         .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-        .color_attachments(&color_attachment_refs)
-        .build()];
+        .color_attachments(&color_attachment_refs)];
 
-    let subpass_deps = [vk::SubpassDependency::builder()
+    let subpass_deps = [vk::SubpassDependency::default()
         .src_subpass(vk::SUBPASS_EXTERNAL)
         .dst_subpass(0)
         .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
@@ -967,10 +1006,9 @@ fn create_vulkan_render_pass(
         .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
         .dst_access_mask(
             vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-        )
-        .build()];
+        )];
 
-    let render_pass_info = vk::RenderPassCreateInfo::builder()
+    let render_pass_info = vk::RenderPassCreateInfo::default()
         .attachments(&attachment_descs)
         .subpasses(&subpass_descs)
         .dependencies(&subpass_deps);
@@ -989,7 +1027,7 @@ fn create_vulkan_framebuffers(
         .iter()
         .map(|view| [*view])
         .map(|attachments| {
-            let framebuffer_info = vk::FramebufferCreateInfo::builder()
+            let framebuffer_info = vk::FramebufferCreateInfo::default()
                 .render_pass(render_pass)
                 .attachments(&attachments)
                 .width(extent.width)
@@ -1015,10 +1053,10 @@ fn record_command_buffers(
     unsafe { device.reset_command_pool(command_pool, vk::CommandPoolResetFlags::empty())? };
 
     let command_buffer_begin_info =
-        vk::CommandBufferBeginInfo::builder().flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
+        vk::CommandBufferBeginInfo::default().flags(vk::CommandBufferUsageFlags::SIMULTANEOUS_USE);
     unsafe { device.begin_command_buffer(command_buffer, &command_buffer_begin_info)? };
 
-    let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
+    let render_pass_begin_info = vk::RenderPassBeginInfo::default()
         .render_pass(render_pass)
         .framebuffer(framebuffer)
         .render_area(vk::Rect2D {
