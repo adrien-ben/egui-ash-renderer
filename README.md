@@ -15,6 +15,7 @@ This is meant to add support for egui in your existing Vulkan/ash applications. 
 
 | crate  | egui         | ash          | gpu-allocator (feature) | vk-mem (feature) |
 |--------|--------------|--------------|-------------------------|------------------|
+| 0.9.0  | 0.32         | 0.38         | 0.27                    | 0.4              |
 | 0.8.0  | [0.26, 0.31] | 0.38         | 0.27                    | 0.4              |
 | 0.7.0  | [0.26, 0.30] | 0.38         | 0.27                    | 0.4              |
 | 0.6.0  | [0.26, 0.29] | 0.38         | 0.27                    | 0.4              |
