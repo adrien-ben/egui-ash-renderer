@@ -1,8 +1,8 @@
 use crate::{RendererError, RendererResult};
-use ash::{vk, Device};
+use ash::{Device, vk};
 use gpu_allocator::{
-    vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator as GpuAllocator},
     MemoryLocation,
+    vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator as GpuAllocator},
 };
 use std::sync::{Arc, Mutex, MutexGuard};
 

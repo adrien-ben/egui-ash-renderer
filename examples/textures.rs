@@ -1,8 +1,8 @@
 mod common;
 
 use ash::vk;
-use common::{run_app, vulkan::texture::Texture, App, System, VulkanContext};
-use egui::{load::SizedTexture, Vec2, Widget};
+use common::{App, System, VulkanContext, run_app, vulkan::texture::Texture};
+use egui::{Vec2, Widget, load::SizedTexture};
 use egui_ash_renderer::vulkan::*;
 use simple_logger::SimpleLogger;
 use std::error::Error;

@@ -1,5 +1,5 @@
 use crate::{RendererError, RendererResult};
-use ash::{vk, Device};
+use ash::{Device, vk};
 
 use super::Allocate;
 

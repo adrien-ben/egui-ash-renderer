@@ -1,6 +1,6 @@
 use super::Allocate;
 use crate::{RendererError, RendererResult};
-use ash::{vk, Device};
+use ash::{Device, vk};
 use std::sync::{Arc, Mutex, MutexGuard};
 use vk_mem::{
     Alloc, Allocation, AllocationCreateFlags, AllocationCreateInfo, Allocator as GpuAllocator,

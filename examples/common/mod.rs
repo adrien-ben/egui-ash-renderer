@@ -3,9 +3,10 @@ pub mod vulkan;
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use ash::vk::{KhrGetPhysicalDeviceProperties2Fn, KhrPortabilityEnumerationFn};
 use ash::{
+    Device, Entry, Instance,
     ext::debug_utils,
     khr::{surface, swapchain},
-    vk, Device, Entry, Instance,
+    vk,
 };
 use egui::{ClippedPrimitive, Context, TextureId, ViewportId};
 use egui_ash_renderer::{Options, Renderer};
@@ -700,16 +701,18 @@ unsafe extern "system" fn vulkan_debug_callback(
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _: *mut c_void,
 ) -> vk::Bool32 {
-    use vk::DebugUtilsMessageSeverityFlagsEXT as Flag;
+    unsafe {
+        use vk::DebugUtilsMessageSeverityFlagsEXT as Flag;
 
-    let message = CStr::from_ptr((*p_callback_data).p_message);
-    match flag {
-        Flag::VERBOSE => log::debug!("{typ:?} - {message:?}"),
-        Flag::INFO => log::info!("{typ:?} - {message:?}"),
-        Flag::WARNING => log::warn!("{typ:?} - {message:?}"),
-        _ => log::error!("{typ:?} - {message:?}"),
+        let message = CStr::from_ptr((*p_callback_data).p_message);
+        match flag {
+            Flag::VERBOSE => log::debug!("{typ:?} - {message:?}"),
+            Flag::INFO => log::info!("{typ:?} - {message:?}"),
+            Flag::WARNING => log::warn!("{typ:?} - {message:?}"),
+            _ => log::error!("{typ:?} - {message:?}"),
+        }
+        vk::FALSE
     }
-    vk::FALSE
 }
 
 fn create_vulkan_physical_device_and_get_graphics_and_present_qs_indices(

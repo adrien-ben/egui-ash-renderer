@@ -1,6 +1,6 @@
 mod buffer {
 
-    use ash::{vk, Device};
+    use ash::{Device, vk};
     use egui_ash_renderer::RendererResult;
     use std::mem;
 
@@ -83,8 +83,8 @@ mod buffer {
 pub mod texture {
 
     use super::buffer::*;
-    use ash::vk;
     use ash::Device;
+    use ash::vk;
     use egui_ash_renderer::RendererResult;
 
     /// Helper struct representing a sampled texture.

@@ -17,7 +17,7 @@ mod vkmem;
 pub use self::vkmem::{Allocator, Memory};
 
 use crate::RendererResult;
-use ash::{vk, Device};
+use ash::{Device, vk};
 
 /// Base allocator trait for all implementations.
 pub trait Allocate {

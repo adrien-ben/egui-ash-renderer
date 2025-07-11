@@ -4,10 +4,10 @@ pub mod vulkan;
 use std::collections::HashMap;
 
 use crate::RendererError;
-use ash::{vk, Device};
+use ash::{Device, vk};
 use egui::{
-    epaint::{ImageDelta, Primitive},
     ClippedPrimitive, ImageData, TextureId,
+    epaint::{ImageDelta, Primitive},
 };
 use mesh::*;
 use vulkan::*;
@@ -696,9 +696,9 @@ mod mesh {
     use super::allocator::{Allocate, Allocator, Memory};
     use super::vulkan::*;
     use crate::RendererResult;
-    use ash::{vk, Device};
-    use egui::epaint::{Primitive, Vertex};
+    use ash::{Device, vk};
     use egui::ClippedPrimitive;
+    use egui::epaint::{Primitive, Vertex};
     use std::mem::size_of;
 
     /// Vertex and index buffer resources for one frame in flight.

@@ -4,7 +4,7 @@
 //! are exposed since they might help users create descriptors sets when using the custom textures.
 
 use crate::{Options, RendererResult};
-use ash::{vk, Device};
+use ash::{Device, vk};
 pub(crate) use buffer::*;
 use std::{
     ffi::CString,
@@ -17,8 +17,10 @@ use crate::DynamicRendering;
 
 /// Return a `&[u8]` for any sized object passed in.
 pub(crate) unsafe fn any_as_u8_slice<T: Sized>(any: &T) -> &[u8] {
-    let ptr = (any as *const T) as *const u8;
-    std::slice::from_raw_parts(ptr, std::mem::size_of::<T>())
+    unsafe {
+        let ptr = (any as *const T) as *const u8;
+        std::slice::from_raw_parts(ptr, std::mem::size_of::<T>())
+    }
 }
 
 /// Create a descriptor set layout compatible with the graphics pipeline.
@@ -297,11 +299,11 @@ pub fn create_vulkan_descriptor_set(
 mod buffer {
 
     use crate::{
-        renderer::allocator::{Allocate, Allocator, Memory},
         RendererResult,
+        renderer::allocator::{Allocate, Allocator, Memory},
     };
-    use ash::vk;
     use ash::Device;
+    use ash::vk;
 
     pub fn create_and_fill_buffer<T>(
         device: &Device,
@@ -322,10 +324,10 @@ mod buffer {
 mod texture {
 
     use super::buffer::*;
-    use crate::renderer::allocator::{Allocate, Allocator, Memory};
     use crate::RendererResult;
-    use ash::vk;
+    use crate::renderer::allocator::{Allocate, Allocator, Memory};
     use ash::Device;
+    use ash::vk;
 
     /// Helper struct representing a sampled texture.
     pub struct Texture {
