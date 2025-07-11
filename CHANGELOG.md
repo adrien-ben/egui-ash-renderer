@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.0
+
+- egui 0.32
+- dev: rust edition 2024
+
 ## 0.8.0
 
 - egui >=0.26, <=0.31
