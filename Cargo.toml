@@ -7,7 +7,7 @@ homepage = "https://github.com/adrien-ben/egui-ash-renderer"
 repository = "https://github.com/adrien-ben/egui-ash-renderer"
 documentation = "https://docs.rs/egui-ash-renderer"
 license = "MIT"
-version = "0.9.0"
+version = "0.10.0"
 authors = ["Adrien Bennadji <adrien.bennadji@live.fr>"]
 edition = "2024"
 include = ["/src", "LICENSE", "README.md", "CHANGELOG.md"]
@@ -15,7 +15,7 @@ include = ["/src", "LICENSE", "README.md", "CHANGELOG.md"]
 [dependencies]
 thiserror = "2.0"
 log = "0.4"
-egui = { version = "0.32", default-features = false }
+egui = { version = "0.33", default-features = false }
 ash = { version = "0.38", default-features = false, features = ["std"] }
 
 gpu-allocator = { version = "0.27", default-features = false, features = ["vulkan"], optional = true }
@@ -34,8 +34,8 @@ ash = { version = "0.38", default-features = false, features = ["debug", "linked
 ash-window = "0.13"
 raw-window-handle = "0.6"
 image = "0.25"
-egui = "0.32"
-egui-winit = "0.32"
-egui_demo_lib = "0.32"
-egui_extras = { version = "0.32", default-features = false, features = ["all_loaders"] }
+egui = "0.33"
+egui-winit = "0.33"
+egui_demo_lib = "0.33"
+egui_extras = { version = "0.33", default-features = false, features = ["all_loaders"] }
 egui-ash-renderer = { path = ".", features = []}
