@@ -18,7 +18,7 @@ log = "0.4"
 egui = { version = "0.33", default-features = false }
 ash = { version = "0.38", default-features = false, features = ["std"] }
 
-gpu-allocator = { version = "0.27", default-features = false, features = ["vulkan"], optional = true }
+gpu-allocator = { version = "0.28", default-features = false, features = ["std", "vulkan"], optional = true }
 vk-mem = { version = "0.4", optional = true }
 
 [features]
