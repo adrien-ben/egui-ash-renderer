@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+
+- egui 0.33
+- gpu-allocator 0.28
+- vk-mem 0.5
+
 ## 0.9.0
 
 - egui 0.32
