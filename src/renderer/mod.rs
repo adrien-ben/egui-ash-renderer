@@ -24,10 +24,7 @@ use {
 };
 
 #[cfg(feature = "vk-mem")]
-use {
-    std::sync::{Arc, Mutex},
-    vk_mem::Allocator as VkMemAllocator,
-};
+use {std::sync::Arc, vk_mem::Allocator as VkMemAllocator};
 
 /// Convenient return type for function that can return a [`RendererError`].
 ///
@@ -189,7 +186,7 @@ impl Renderer {
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
     #[cfg(feature = "vk-mem")]
     pub fn with_vk_mem_allocator(
-        vk_mem_allocator: Arc<Mutex<VkMemAllocator>>,
+        vk_mem_allocator: Arc<VkMemAllocator>,
         device: Device,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
         #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
