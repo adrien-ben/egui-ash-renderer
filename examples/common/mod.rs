@@ -24,16 +24,6 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
-#[cfg(feature = "gpu-allocator")]
-use {
-    gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc},
-    std::sync::{Arc, Mutex},
-};
-#[cfg(feature = "vk-mem")]
-use {
-    std::sync::Arc,
-    vk_mem::{Allocator, AllocatorCreateInfo},
-};
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 1024;
@@ -177,62 +167,71 @@ impl System {
             None,
         );
 
-        #[cfg(feature = "gpu-allocator")]
-        let renderer = {
-            let allocator = Allocator::new(&AllocatorCreateDesc {
-                instance: vulkan_context.instance.clone(),
-                device: vulkan_context.device.clone(),
-                physical_device: vulkan_context.physical_device,
-                debug_settings: Default::default(),
-                buffer_device_address: false,
-                allocation_sizes: Default::default(),
-            })?;
-
-            Renderer::with_gpu_allocator(
-                Arc::new(Mutex::new(allocator)),
-                vulkan_context.device.clone(),
-                swapchain.render_pass,
-                Options {
-                    srgb_framebuffer: true,
-                    ..Default::default()
-                },
-            )?
-        };
-
-        #[cfg(feature = "vk-mem")]
-        let renderer = {
-            let allocator = {
-                let allocator_create_info = AllocatorCreateInfo::new(
+        cfg_if::cfg_if! {
+            if #[cfg(feature = "simple-allocator")] {
+                let renderer = Renderer::with_default_allocator(
                     &vulkan_context.instance,
-                    &vulkan_context.device,
                     vulkan_context.physical_device,
-                );
+                    vulkan_context.device.clone(),
+                    swapchain.render_pass,
+                    Options {
+                        srgb_framebuffer: true,
+                        ..Default::default()
+                    },
+                )?;
+            } else if #[cfg(feature = "gpu-allocator")] {
+                let renderer = {
+                    use gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc};
+                    use std::sync::{Arc, Mutex};
 
-                unsafe { Allocator::new(allocator_create_info)? }
-            };
+                    let allocator = Allocator::new(&AllocatorCreateDesc {
+                        instance: vulkan_context.instance.clone(),
+                        device: vulkan_context.device.clone(),
+                        physical_device: vulkan_context.physical_device,
+                        debug_settings: Default::default(),
+                        buffer_device_address: false,
+                        allocation_sizes: Default::default(),
+                    })?;
 
-            Renderer::with_vk_mem_allocator(
-                Arc::new(allocator),
-                vulkan_context.device.clone(),
-                swapchain.render_pass,
-                Options {
-                    srgb_framebuffer: true,
-                    ..Default::default()
-                },
-            )?
+                    Renderer::with_gpu_allocator(
+                        Arc::new(Mutex::new(allocator)),
+                        vulkan_context.device.clone(),
+                        swapchain.render_pass,
+                        Options {
+                            srgb_framebuffer: true,
+                            ..Default::default()
+                        },
+                    )?
+                };
+            } else if #[cfg(feature = "vk-mem")] {
+                let renderer = {
+                    use std::sync::Arc;
+                    use vk_mem::{Allocator, AllocatorCreateInfo};
+
+                    let allocator = {
+                        let allocator_create_info = AllocatorCreateInfo::new(
+                            &vulkan_context.instance,
+                            &vulkan_context.device,
+                            vulkan_context.physical_device,
+                        );
+
+                        unsafe { Allocator::new(allocator_create_info)? }
+                    };
+
+                    Renderer::with_vk_mem_allocator(
+                        Arc::new(allocator),
+                        vulkan_context.device.clone(),
+                        swapchain.render_pass,
+                        Options {
+                            srgb_framebuffer: true,
+                            ..Default::default()
+                        },
+                    )?
+                };
+            } else {
+                compile_error!("at least one of simple-allocator, gpu-allocator or vk-mem feature must be enabled");
+            }
         };
-
-        #[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
-        let renderer = Renderer::with_default_allocator(
-            &vulkan_context.instance,
-            vulkan_context.physical_device,
-            vulkan_context.device.clone(),
-            swapchain.render_pass,
-            Options {
-                srgb_framebuffer: true,
-                ..Default::default()
-            },
-        )?;
 
         Ok(Self {
             vulkan_context,

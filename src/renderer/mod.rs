@@ -3,7 +3,7 @@ pub mod vulkan;
 
 use std::collections::HashMap;
 
-use crate::RendererError;
+use crate::{RendererError, renderer::allocator::Allocator};
 use ash::{Device, vk};
 use egui::{
     ClippedPrimitive, ImageData, TextureId,
@@ -11,20 +11,6 @@ use egui::{
 };
 use mesh::*;
 use vulkan::*;
-
-use self::allocator::Allocator;
-
-#[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
-use ash::Instance;
-
-#[cfg(feature = "gpu-allocator")]
-use {
-    gpu_allocator::vulkan::Allocator as GpuAllocator,
-    std::sync::{Arc, Mutex},
-};
-
-#[cfg(feature = "vk-mem")]
-use {std::sync::Arc, vk_mem::Allocator as VkMemAllocator};
 
 /// Convenient return type for function that can return a [`RendererError`].
 ///
@@ -110,9 +96,9 @@ impl Renderer {
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    #[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
+    #[cfg(feature = "simple-allocator")]
     pub fn with_default_allocator(
-        instance: &Instance,
+        instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
         device: Device,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
@@ -124,7 +110,7 @@ impl Renderer {
 
         Self::from_allocator(
             device,
-            Allocator::new(memory_properties),
+            Allocator::new_simple(memory_properties),
             #[cfg(not(feature = "dynamic-rendering"))]
             render_pass,
             #[cfg(feature = "dynamic-rendering")]
@@ -151,7 +137,7 @@ impl Renderer {
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
     #[cfg(feature = "gpu-allocator")]
     pub fn with_gpu_allocator(
-        gpu_allocator: Arc<Mutex<GpuAllocator>>,
+        gpu_allocator: std::sync::Arc<std::sync::Mutex<gpu_allocator::vulkan::Allocator>>,
         device: Device,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
         #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
@@ -159,7 +145,7 @@ impl Renderer {
     ) -> RendererResult<Self> {
         Self::from_allocator(
             device,
-            Allocator::new(gpu_allocator),
+            Allocator::new_gpu(gpu_allocator),
             #[cfg(not(feature = "dynamic-rendering"))]
             render_pass,
             #[cfg(feature = "dynamic-rendering")]
@@ -186,7 +172,7 @@ impl Renderer {
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
     #[cfg(feature = "vk-mem")]
     pub fn with_vk_mem_allocator(
-        vk_mem_allocator: Arc<VkMemAllocator>,
+        vk_mem_allocator: std::sync::Arc<vk_mem::Allocator>,
         device: Device,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
         #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
@@ -194,7 +180,7 @@ impl Renderer {
     ) -> RendererResult<Self> {
         Self::from_allocator(
             device,
-            Allocator::new(vk_mem_allocator),
+            Allocator::new_vk_mem(vk_mem_allocator),
             #[cfg(not(feature = "dynamic-rendering"))]
             render_pass,
             #[cfg(feature = "dynamic-rendering")]
@@ -845,7 +831,7 @@ mod mesh {
 /// (the standard computer graphics coordinate space)and the destination space is right-handed
 /// and y-down, with Z (depth) clip extending from 0.0 (close) to 1.0 (far).
 ///
-/// from: https://github.com/fu5ha/ultraviolet (to limit dependencies)
+/// from: <https://github.com/fu5ha/ultraviolet> (to limit dependencies)
 #[inline]
 pub fn orthographic_vk(
     left: f32,
