@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0
+
+- Do not wrap vk_mem::Allocator in a Mutex by @BattyBoopers
+
 ## 0.10.0
 
 - egui 0.33
@@ -50,6 +54,6 @@
 ## 0.1.0
 
 - Initial implementation with default allocator and
-    - support for vk-mem
-    - support for gpu-allocator
-    - support for dynamic rendering
+  - support for vk-mem
+  - support for gpu-allocator
+  - support for dynamic rendering
