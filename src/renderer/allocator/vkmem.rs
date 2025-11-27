@@ -1,9 +1,9 @@
 use super::Allocate;
-use crate::{RendererError, RendererResult};
+use crate::RendererResult;
 use ash::{Device, vk};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 use vk_mem::{
-    Alloc, Allocation, AllocationCreateFlags, AllocationCreateInfo, Allocator as GpuAllocator,
+    Alloc, Allocation, AllocationCreateFlags, AllocationCreateInfo, Allocator as VkMemAllocator,
     MemoryUsage,
 };
 
@@ -11,18 +11,12 @@ use vk_mem::{
 pub type Memory = Allocation;
 
 pub struct Allocator {
-    pub allocator: Arc<Mutex<GpuAllocator>>,
+    pub allocator: Arc<VkMemAllocator>,
 }
 
 impl Allocator {
-    pub fn new(allocator: Arc<Mutex<vk_mem::Allocator>>) -> Self {
+    pub fn new(allocator: Arc<VkMemAllocator>) -> Self {
         Self { allocator }
-    }
-
-    fn get_allocator(&self) -> RendererResult<MutexGuard<'_, GpuAllocator>> {
-        self.allocator.lock().map_err(|e| {
-            RendererError::Allocator(format!("Failed to acquire lock on allocator: {e}"))
-        })
     }
 }
 
@@ -46,10 +40,10 @@ impl Allocate for Allocator {
             ..Default::default()
         };
 
-        let allocator = self.get_allocator()?;
-
-        let (buffer, allocation) =
-            unsafe { allocator.create_buffer(&buffer_info, &buffer_alloc_info)? };
+        let (buffer, allocation) = unsafe {
+            self.allocator
+                .create_buffer(&buffer_info, &buffer_alloc_info)?
+        };
 
         Ok((buffer, allocation))
     }
@@ -84,10 +78,10 @@ impl Allocate for Allocator {
             ..Default::default()
         };
 
-        let allocator = self.get_allocator()?;
-
-        let (image, allocation) =
-            unsafe { allocator.create_image(&image_info, &image_alloc_info)? };
+        let (image, allocation) = unsafe {
+            self.allocator
+                .create_image(&image_info, &image_alloc_info)?
+        };
 
         Ok((image, allocation))
     }
@@ -98,9 +92,7 @@ impl Allocate for Allocator {
         buffer: vk::Buffer,
         mut memory: Self::Memory,
     ) -> RendererResult<()> {
-        let allocator = self.get_allocator()?;
-
-        unsafe { allocator.destroy_buffer(buffer, &mut memory) };
+        unsafe { self.allocator.destroy_buffer(buffer, &mut memory) };
 
         Ok(())
     }
@@ -111,9 +103,7 @@ impl Allocate for Allocator {
         image: vk::Image,
         mut memory: Self::Memory,
     ) -> RendererResult<()> {
-        let allocator = self.get_allocator()?;
-
-        unsafe { allocator.destroy_image(image, &mut memory) };
+        unsafe { self.allocator.destroy_image(image, &mut memory) };
 
         Ok(())
     }
@@ -126,12 +116,11 @@ impl Allocate for Allocator {
     ) -> RendererResult<()> {
         let size = std::mem::size_of_val(data) as _;
 
-        let allocator = self.get_allocator()?;
-        let data_ptr = unsafe { allocator.map_memory(memory)? as *mut std::ffi::c_void };
+        let data_ptr = unsafe { self.allocator.map_memory(memory)? as *mut std::ffi::c_void };
         let mut align =
             unsafe { ash::util::Align::new(data_ptr, std::mem::align_of::<T>() as _, size) };
         align.copy_from_slice(data);
-        unsafe { allocator.unmap_memory(memory) };
+        unsafe { self.allocator.unmap_memory(memory) };
 
         Ok(())
     }

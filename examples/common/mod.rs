@@ -31,7 +31,7 @@ use {
 };
 #[cfg(feature = "vk-mem")]
 use {
-    std::sync::{Arc, Mutex},
+    std::sync::Arc,
     vk_mem::{Allocator, AllocatorCreateInfo},
 };
 
@@ -212,7 +212,7 @@ impl System {
             };
 
             Renderer::with_vk_mem_allocator(
-                Arc::new(Mutex::new(allocator)),
+                Arc::new(allocator),
                 vulkan_context.device.clone(),
                 swapchain.render_pass,
                 Options {
