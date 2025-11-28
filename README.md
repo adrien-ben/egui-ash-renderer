@@ -101,25 +101,39 @@ renderer.remove_user_texture(texture_id);
 
 Here is an [example using egui managed and user managed textures](./examples/textures.rs).
 
+## Allocators
+
+GPU memory allocations are made using allocators. An allocator in any type that implements [`allocator::Allocator`]. You can use one of
+the provided allocators or implement your own.
+
+### Simple allocator
+
+Simple allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. Created with [`Renderer::with_default_allocator`].
+Requires the `simple-allocator` feature.
+
+### GPU Allocator
+
+Uses [gpu-allocator][gpu-allocator] to handle gpu memory. Created with [`Renderer::with_gpu_allocator`] which takes
+a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. Requires the `gpu-allocator` feature.
+
+### VkMem Allocator
+
+Uses [vk-mem-rs][vk-mem-rs] to handle gpu memory. Created with [`Renderer::with_vk_mem_allocator`] which takes
+a `Arc<vk_mem::Allocator>`. Requires the `vk-mem` feature.
+
+### Custom allocator
+
+You can pass your own allocator using [`Renderer::with_custom_allocator`]. Requires the `custom-allocator` feature.
+
+Here is [an example of custom delegating allocator](./examples/common/renderer.rs).
+
 ## Features
 
-### simple-allocator
-
-Simple allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. It adds `Renderer::with_default_allocator`.
-
-### gpu-allocator
-
-This feature adds support for [gpu-allocator][gpu-allocator]. It adds `Renderer::with_gpu_allocator` which takes
-a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. All internal allocator are then done using the allocator.
-
-### vk-mem
-
-This feature adds support for [vk-mem-rs][vk-mem-rs]. It adds `Renderer::with_vk_mem_allocator` which takes
-a `Arc<vk_mem::Allocator>`. All internal allocator are then done using the allocator.
-
-### dynamic-rendering
-
-This feature is useful if you want to integrate the library in an app making use of Vulkan's dynamic rendering.
+- **simple-allocator** : Allow simple allocator usage.
+- **gpu-allocator** : Allow [gpu-allocator][gpu-allocator] allocator usage.
+- **vk-mem** : Allow [vk-mem-rs][vk-mem-rs] allocator usage.
+- **custom-allocator** :  Allow passing any custom allocator.
+- **dynamic-rendering** : This feature is useful if you want to integrate the library in an app making use of Vulkan's dynamic rendering.
 When enabled, functions that usually takes a `vk::RenderPass` as argument will now take a `DynamicRendering` which
 contains the format of the color attachment the UI will be drawn to and an optional depth attachment format.
 

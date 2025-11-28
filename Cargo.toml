@@ -29,6 +29,7 @@ default = ["simple-allocator"]
 simple-allocator = []
 gpu-allocator = ["dep:gpu-allocator"]
 vk-mem = ["dep:vk-mem"]
+custom-allocator = []
 dynamic-rendering = []
 
 [dev-dependencies]
@@ -49,5 +50,3 @@ egui_demo_lib = "0.33"
 egui_extras = { version = "0.33", default-features = false, features = [
     "all_loaders",
 ] }
-# fixme: default-features = false does not seem to work here
-egui-ash-renderer = { path = ".", default-features = false, features = [] }

@@ -4,6 +4,7 @@
 
 - new `simple-allocator` feature. enabled by default.
 - the `Allocator` trait is now public.
+- new `custom-allocator` feature allowing to create an renderer with a custom allocator.
 
 ### Breaking
 

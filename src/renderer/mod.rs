@@ -196,6 +196,43 @@ impl Renderer<allocator::VkMemAllocator> {
     }
 }
 
+#[cfg(feature = "custom-allocator")]
+impl<A: Allocator> Renderer<A> {
+    /// Create a renderer using the provided allocator.
+    ///
+    /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
+    ///
+    /// # Arguments
+    ///
+    /// * `allocator` - The custom allocator that will be used to allocator buffer and image memory.
+    /// * `device` - A Vulkan device.
+    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
+    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `options` - Rendering options.
+    ///
+    /// # Errors
+    ///
+    /// * [`RendererError`] - If the number of in flight frame in incorrect.
+    /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
+    pub fn with_custom_allocator(
+        allocator: A,
+        device: Device,
+        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
+        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        options: Options,
+    ) -> RendererResult<Self> {
+        Self::from_allocator(
+            device,
+            allocator,
+            #[cfg(not(feature = "dynamic-rendering"))]
+            render_pass,
+            #[cfg(feature = "dynamic-rendering")]
+            dynamic_rendering,
+            options,
+        )
+    }
+}
+
 impl<A: Allocator> Renderer<A> {
     fn from_allocator(
         device: Device,
