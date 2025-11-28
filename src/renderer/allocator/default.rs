@@ -1,10 +1,8 @@
 use crate::{RendererError, RendererResult};
 use ash::{Device, vk};
 
-use super::Allocate;
-
 /// Abstraction over memory used by Vulkan resources.
-pub type Memory = vk::DeviceMemory;
+type Allocation = vk::DeviceMemory;
 
 pub struct Allocator {
     pub memory_properties: vk::PhysicalDeviceMemoryProperties,
@@ -35,15 +33,15 @@ impl Allocator {
     }
 }
 
-impl Allocate for Allocator {
-    type Memory = Memory;
+impl super::Allocator for Allocator {
+    type Allocation = Allocation;
 
     fn create_buffer(
         &mut self,
         device: &Device,
         size: usize,
         usage: vk::BufferUsageFlags,
-    ) -> RendererResult<(vk::Buffer, Self::Memory)> {
+    ) -> RendererResult<(vk::Buffer, Allocation)> {
         let buffer_info = vk::BufferCreateInfo::default()
             .size(size as _)
             .usage(usage)
@@ -71,7 +69,7 @@ impl Allocate for Allocator {
         device: &Device,
         width: u32,
         height: u32,
-    ) -> RendererResult<(vk::Image, Self::Memory)> {
+    ) -> RendererResult<(vk::Image, Allocation)> {
         let extent = vk::Extent3D {
             width,
             height,
@@ -112,7 +110,7 @@ impl Allocate for Allocator {
         &mut self,
         device: &Device,
         buffer: vk::Buffer,
-        memory: Self::Memory,
+        memory: Allocation,
     ) -> RendererResult<()> {
         unsafe {
             device.destroy_buffer(buffer, None);
@@ -126,7 +124,7 @@ impl Allocate for Allocator {
         &mut self,
         device: &Device,
         image: vk::Image,
-        memory: Self::Memory,
+        memory: Allocation,
     ) -> RendererResult<()> {
         unsafe {
             device.destroy_image(image, None);
@@ -139,7 +137,7 @@ impl Allocate for Allocator {
     fn update_buffer<T: Copy>(
         &mut self,
         device: &Device,
-        memory: &mut Self::Memory,
+        memory: &mut Allocation,
         data: &[T],
     ) -> RendererResult<()> {
         let size = std::mem::size_of_val(data) as _;

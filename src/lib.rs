@@ -96,14 +96,18 @@
 //!
 //! ## Features
 //!
+//! ### simple-allocator
+//!
+//! Simple allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. It adds [`Renderer::with_default_allocator`].
+//!
 //! ### gpu-allocator
 //!
-//! This feature adds support for [gpu-allocator][gpu-allocator]. It adds `Renderer::with_gpu_allocator` which takes
+//! This feature adds support for [gpu-allocator][gpu-allocator]. It adds [`Renderer::with_gpu_allocator`] which takes
 //! a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. All internal allocator are then done using the allocator.
 //!
 //! ### vk-mem
 //!
-//! This feature adds support for [vk-mem-rs][vk-mem-rs]. It adds `Renderer::with_vk_mem_allocator` which takes
+//! This feature adds support for [vk-mem-rs][vk-mem-rs]. It adds [`Renderer::with_vk_mem_allocator`] which takes
 //! a `Arc<vk_mem::Allocator>`. All internal allocator are then done using the allocator.
 //!
 //! ### dynamic-rendering
@@ -118,7 +122,7 @@
 //!
 //! ```rust
 //! // Example with default allocator
-//! let renderer = Renderer::with_default_allocator(
+//! let renderer : Renderer<SimpleAllocator> = Renderer::with_default_allocator(
 //!     &vk_instance,
 //!     vk_physical_device,
 //!     vk_device.clone(),
@@ -157,6 +161,7 @@
 //! [gpu-allocator]: https://github.com/Traverse-Research/gpu-allocator
 //! [vk-mem-rs]: https://github.com/gwihlidal/vk-mem-rs
 //! [winit]: https://github.com/rust-windowing/winit
+//! [vk-allocate-memory]: https://registry.khronos.org/VulkanSC/specs/1.0-extensions/man/html/vkAllocateMemory.html
 
 mod error;
 mod renderer;

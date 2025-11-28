@@ -301,19 +301,16 @@ pub fn create_vulkan_descriptor_set(
 
 mod buffer {
 
-    use crate::{
-        RendererResult,
-        renderer::allocator::{Allocate, Allocator, Memory},
-    };
+    use crate::{RendererResult, renderer::allocator::Allocator};
     use ash::Device;
     use ash::vk;
 
-    pub fn create_and_fill_buffer<T>(
+    pub fn create_and_fill_buffer<A: Allocator, T>(
         device: &Device,
-        allocator: &mut Allocator,
+        allocator: &mut A,
         data: &[T],
         usage: vk::BufferUsageFlags,
-    ) -> RendererResult<(vk::Buffer, Memory)>
+    ) -> RendererResult<(vk::Buffer, A::Allocation)>
     where
         T: Copy,
     {
@@ -328,24 +325,24 @@ mod texture {
 
     use super::buffer::*;
     use crate::RendererResult;
-    use crate::renderer::allocator::{Allocate, Allocator, Memory};
+    use crate::renderer::allocator::Allocator;
     use ash::Device;
     use ash::vk;
 
     /// Helper struct representing a sampled texture.
-    pub struct Texture {
+    pub struct Texture<A: Allocator> {
         pub image: vk::Image,
-        image_mem: Memory,
+        image_mem: A::Allocation,
         pub image_view: vk::ImageView,
         pub sampler: vk::Sampler,
     }
 
-    impl Texture {
+    impl<A: Allocator> Texture<A> {
         pub(crate) fn from_rgba8(
             device: &Device,
             queue: vk::Queue,
             command_pool: vk::CommandPool,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             width: u32,
             height: u32,
             data: &[u8],
@@ -362,12 +359,12 @@ mod texture {
 
         fn cmd_from_rgba(
             device: &Device,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             command_buffer: vk::CommandBuffer,
             width: u32,
             height: u32,
             data: &[u8],
-        ) -> RendererResult<(Self, vk::Buffer, Memory)> {
+        ) -> RendererResult<(Self, vk::Buffer, A::Allocation)> {
             let (image, image_mem) = allocator.create_image(device, width, height)?;
 
             let image_view = {
@@ -429,7 +426,7 @@ mod texture {
             device: &Device,
             queue: vk::Queue,
             command_pool: vk::CommandPool,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             region: vk::Rect2D,
             data: &[u8],
         ) -> RendererResult<()> {
@@ -447,10 +444,10 @@ mod texture {
             &mut self,
             device: &Device,
             command_buffer: vk::CommandBuffer,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             region: vk::Rect2D,
             data: &[u8],
-        ) -> RendererResult<(vk::Buffer, Memory)> {
+        ) -> RendererResult<(vk::Buffer, A::Allocation)> {
             let (buffer, buffer_mem) = create_and_fill_buffer(
                 device,
                 allocator,
@@ -541,7 +538,7 @@ mod texture {
         }
 
         /// Free texture's resources.
-        pub fn destroy(self, device: &Device, allocator: &mut Allocator) -> RendererResult<()> {
+        pub fn destroy(self, device: &Device, allocator: &mut A) -> RendererResult<()> {
             unsafe {
                 device.destroy_sampler(self.sampler, None);
                 device.destroy_image_view(self.image_view, None);

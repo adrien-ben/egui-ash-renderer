@@ -1,5 +1,14 @@
 # Changelog
 
+## current
+
+- new `simple-allocator` feature. enabled by default.
+- the `Allocator` trait is now public.
+
+### Breaking
+
+- Renderer is now generic over the `Allocator` trait.
+
 ## 0.12.0
 
 ### Breaking
