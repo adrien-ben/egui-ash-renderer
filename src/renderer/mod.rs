@@ -1,9 +1,10 @@
-mod allocator;
+pub mod allocator;
 pub mod vulkan;
 
 use std::collections::HashMap;
 
 use crate::RendererError;
+use allocator::Allocator;
 use ash::{Device, vk};
 use egui::{
     ClippedPrimitive, ImageData, TextureId,
@@ -11,20 +12,6 @@ use egui::{
 };
 use mesh::*;
 use vulkan::*;
-
-use self::allocator::Allocator;
-
-#[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
-use ash::Instance;
-
-#[cfg(feature = "gpu-allocator")]
-use {
-    gpu_allocator::vulkan::Allocator as GpuAllocator,
-    std::sync::{Arc, Mutex},
-};
-
-#[cfg(feature = "vk-mem")]
-use {std::sync::Arc, vk_mem::Allocator as VkMemAllocator};
 
 /// Convenient return type for function that can return a [`RendererError`].
 ///
@@ -78,21 +65,22 @@ pub struct DynamicRendering {
 /// are resized at each call to [`cmd_draw`] if draw data does not fit.
 ///
 /// [`cmd_draw`]: #method.cmd_draw
-pub struct Renderer {
+pub struct Renderer<A: Allocator> {
     device: Device,
-    allocator: Allocator,
+    allocator: A,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
     descriptor_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
-    managed_textures: HashMap<TextureId, Texture>,
+    managed_textures: HashMap<TextureId, Texture<A>>,
     textures: HashMap<TextureId, vk::DescriptorSet>,
     next_user_texture_id: u64,
     options: Options,
-    frames: Option<Frames>,
+    frames: Option<Frames<A>>,
 }
 
-impl Renderer {
+#[cfg(feature = "simple-allocator")]
+impl Renderer<allocator::SimpleAllocator> {
     /// Create a renderer using the default allocator.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
@@ -110,9 +98,8 @@ impl Renderer {
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    #[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
     pub fn with_default_allocator(
-        instance: &Instance,
+        instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
         device: Device,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
@@ -124,7 +111,7 @@ impl Renderer {
 
         Self::from_allocator(
             device,
-            Allocator::new(memory_properties),
+            allocator::SimpleAllocator::new(memory_properties),
             #[cfg(not(feature = "dynamic-rendering"))]
             render_pass,
             #[cfg(feature = "dynamic-rendering")]
@@ -132,7 +119,10 @@ impl Renderer {
             options,
         )
     }
+}
 
+#[cfg(feature = "gpu-allocator")]
+impl Renderer<allocator::GpuAllocator> {
     /// Create a renderer using gpu-allocator.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
@@ -149,17 +139,16 @@ impl Renderer {
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    #[cfg(feature = "gpu-allocator")]
     pub fn with_gpu_allocator(
-        gpu_allocator: Arc<Mutex<GpuAllocator>>,
+        gpu_allocator: std::sync::Arc<std::sync::Mutex<gpu_allocator::vulkan::Allocator>>,
         device: Device,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
         #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
         options: Options,
     ) -> RendererResult<Self> {
-        Self::from_allocator(
+        Renderer::from_allocator(
             device,
-            Allocator::new(gpu_allocator),
+            allocator::GpuAllocator::new(gpu_allocator),
             #[cfg(not(feature = "dynamic-rendering"))]
             render_pass,
             #[cfg(feature = "dynamic-rendering")]
@@ -167,7 +156,10 @@ impl Renderer {
             options,
         )
     }
+}
 
+#[cfg(feature = "vk-mem")]
+impl Renderer<allocator::VkMemAllocator> {
     /// Create a renderer using vk-mem.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
@@ -184,9 +176,8 @@ impl Renderer {
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    #[cfg(feature = "vk-mem")]
     pub fn with_vk_mem_allocator(
-        vk_mem_allocator: Arc<VkMemAllocator>,
+        vk_mem_allocator: std::sync::Arc<vk_mem::Allocator>,
         device: Device,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
         #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
@@ -194,7 +185,7 @@ impl Renderer {
     ) -> RendererResult<Self> {
         Self::from_allocator(
             device,
-            Allocator::new(vk_mem_allocator),
+            allocator::VkMemAllocator::new(vk_mem_allocator),
             #[cfg(not(feature = "dynamic-rendering"))]
             render_pass,
             #[cfg(feature = "dynamic-rendering")]
@@ -202,10 +193,12 @@ impl Renderer {
             options,
         )
     }
+}
 
+impl<A: Allocator> Renderer<A> {
     fn from_allocator(
         device: Device,
-        allocator: Allocator,
+        allocator: A,
         #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
         #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
         options: Options,
@@ -626,7 +619,7 @@ impl Renderer {
     }
 }
 
-impl Drop for Renderer {
+impl<A: Allocator> Drop for Renderer<A> {
     fn drop(&mut self) {
         log::debug!("Destroying egui renderer");
         let device = &self.device;
@@ -651,16 +644,16 @@ impl Drop for Renderer {
 }
 
 // Structure holding data for all frames in flight.
-struct Frames {
+struct Frames<A: Allocator> {
     index: usize,
     count: usize,
-    meshes: Vec<Mesh>,
+    meshes: Vec<Mesh<A>>,
 }
 
-impl Frames {
+impl<A: Allocator> Frames<A> {
     fn new(
         device: &Device,
-        allocator: &mut Allocator,
+        allocator: &mut A,
         primitives: &[ClippedPrimitive],
         count: usize,
     ) -> RendererResult<Self> {
@@ -674,13 +667,13 @@ impl Frames {
         })
     }
 
-    fn next(&mut self) -> &mut Mesh {
+    fn next(&mut self) -> &mut Mesh<A> {
         let result = &mut self.meshes[self.index];
         self.index = (self.index + 1) % self.count;
         result
     }
 
-    fn destroy(self, device: &Device, allocator: &mut Allocator) -> RendererResult<()> {
+    fn destroy(self, device: &Device, allocator: &mut A) -> RendererResult<()> {
         for mesh in self.meshes.into_iter() {
             mesh.destroy(device, allocator)?;
         }
@@ -690,7 +683,7 @@ impl Frames {
 
 mod mesh {
 
-    use super::allocator::{Allocate, Allocator, Memory};
+    use super::allocator::Allocator;
     use super::vulkan::*;
     use crate::RendererResult;
     use ash::{Device, vk};
@@ -699,19 +692,19 @@ mod mesh {
     use std::mem::size_of;
 
     /// Vertex and index buffer resources for one frame in flight.
-    pub struct Mesh {
+    pub struct Mesh<A: Allocator> {
         pub vertices: vk::Buffer,
-        vertices_mem: Memory,
+        vertices_mem: A::Allocation,
         vertex_count: usize,
         pub indices: vk::Buffer,
-        indices_mem: Memory,
+        indices_mem: A::Allocation,
         index_count: usize,
     }
 
-    impl Mesh {
+    impl<A: Allocator> Mesh<A> {
         pub fn new(
             device: &Device,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             primitives: &[ClippedPrimitive],
         ) -> RendererResult<Self> {
             let vertices = create_vertices(primitives);
@@ -748,7 +741,7 @@ mod mesh {
         pub fn update(
             &mut self,
             device: &Device,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             primitives: &[ClippedPrimitive],
         ) -> RendererResult<()> {
             let vertices = create_vertices(primitives);
@@ -794,7 +787,7 @@ mod mesh {
             Ok(())
         }
 
-        pub fn destroy(self, device: &Device, allocator: &mut Allocator) -> RendererResult<()> {
+        pub fn destroy(self, device: &Device, allocator: &mut A) -> RendererResult<()> {
             allocator.destroy_buffer(device, self.vertices, self.vertices_mem)?;
             allocator.destroy_buffer(device, self.indices, self.indices_mem)?;
             Ok(())
@@ -845,7 +838,7 @@ mod mesh {
 /// (the standard computer graphics coordinate space)and the destination space is right-handed
 /// and y-down, with Z (depth) clip extending from 0.0 (close) to 1.0 (far).
 ///
-/// from: https://github.com/fu5ha/ultraviolet (to limit dependencies)
+/// from: <https://github.com/fu5ha/ultraviolet> (to limit dependencies)
 #[inline]
 pub fn orthographic_vk(
     left: f32,

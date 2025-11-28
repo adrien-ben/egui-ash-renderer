@@ -15,6 +15,7 @@ This is meant to add support for egui in your existing Vulkan/ash applications. 
 
 | crate  | egui         | ash          | gpu-allocator (feature) | vk-mem (feature) |
 |--------|--------------|--------------|-------------------------|------------------|
+| 0.11.0 | 0.33         | 0.38         | 0.28                    | 0.5              |
 | 0.10.0 | 0.33         | 0.38         | 0.28                    | 0.5              |
 | 0.9.0  | 0.32         | 0.38         | 0.27                    | 0.4              |
 | 0.8.0  | [0.26, 0.31] | 0.38         | 0.27                    | 0.4              |
@@ -49,7 +50,7 @@ When you target an sRGB framebuffer, the fragment shader will output linear colo
 
 ### Managed textures
 
-Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and 
+Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and
 `Renderer::free_textures`. The former must be call before submitting the command buffer for rendering and the latter must be
 called after rendering is complete. Example:
 
@@ -67,13 +68,13 @@ renderer.set_textures(queue, command_pool, output.textures_delta.set.as_slice())
 renderer.free_textures(output.textures_delta.free.as_slice()).unwrap();
 ```
 
-> If you have multiple frames in flight you might want to hold a set of textures to free for each frame and call 
+> If you have multiple frames in flight you might want to hold a set of textures to free for each frame and call
 `Renderer::free_textures` after waiting for the fence of the previous frame.
 
 ### Custom textures
 
 You can also render used managed textures in egui. You just need to call `Renderer::add_user_texture` and pass a
-`vk::DescriptorSet` compatible with the layout used in the renderer's graphics pipeline 
+`vk::DescriptorSet` compatible with the layout used in the renderer's graphics pipeline
 (see [create_vulkan_descriptor_set_layout](./src/renderer/vulkan.rs)). This will return a `egui::TextureId` that you
 can use in your ui code. Example:
 
@@ -97,9 +98,13 @@ let output = egui_ctx.run(raw_input, |ui| {
 renderer.remove_user_texture(texture_id);
 ```
 
-You can find a example using egui managed and user managed textures [here](./examples/textures.rs).
+Here is an [example using egui managed and user managed textures](./examples/textures.rs).
 
 ## Features
+
+### simple-allocator
+
+Simple allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. It adds `Renderer::with_default_allocator`.
 
 ### gpu-allocator
 
@@ -109,7 +114,7 @@ a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. All internal allocator are the
 ### vk-mem
 
 This feature adds support for [vk-mem-rs][vk-mem-rs]. It adds `Renderer::with_vk_mem_allocator` which takes
-a `Arc<Mutex<vk_mem::Allocator>>`. All internal allocator are then done using the allocator.
+a `Arc<vk_mem::Allocator>`. All internal allocator are then done using the allocator.
 
 ### dynamic-rendering
 
@@ -123,7 +128,7 @@ You can find an example of integration with [winit][winit] in the [common module
 
 ```rust
 // Example with default allocator
-let renderer = Renderer::with_default_allocator(
+let renderer : Renderer<SimpleAllocator> = Renderer::with_default_allocator(
     &vk_instance,
     vk_physical_device,
     vk_device.clone(),
@@ -162,3 +167,4 @@ cargo run --example <example>
 [gpu-allocator]: https://github.com/Traverse-Research/gpu-allocator
 [vk-mem-rs]: https://github.com/gwihlidal/vk-mem-rs
 [winit]: https://github.com/rust-windowing/winit
+[vk-allocate-memory]: https://registry.khronos.org/VulkanSC/specs/1.0-extensions/man/html/vkAllocateMemory.html
