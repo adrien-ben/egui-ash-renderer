@@ -10,6 +10,7 @@ use ash::{
     vk,
 };
 use egui::{ClippedPrimitive, Context, TextureId, ViewportId};
+use egui_ash_renderer::RenderMode;
 use egui_winit::State;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
@@ -205,7 +206,9 @@ impl System {
                 self.swapchain
                     .recreate(&self.vulkan_context)
                     .expect("Failed to recreate swapchain");
-                self.renderer.set_render_pass(self.swapchain.render_pass);
+                self.renderer
+                    .set_render_mode(RenderMode::RenderPass(self.swapchain.render_pass));
+
                 self.dirty_swapchain = false;
             } else {
                 return;

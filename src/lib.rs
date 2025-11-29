@@ -119,6 +119,10 @@
 //! You can pass your own allocator using [`Renderer::with_custom_allocator`]. Requires the `custom-allocator` feature.
 //! 
 //! Here is [an example of custom delegating allocator](./examples/common/renderer.rs).
+//!
+//! ## Render mode
+//! 
+//! The renderer supports rendering with a render pass or using dynamic rendering. It is done by passing `RenderMode` when creating the renderer.
 //! 
 //! ## Features
 //! 
@@ -126,9 +130,6 @@
 //! - **gpu-allocator** : Allow [gpu-allocator][gpu-allocator] allocator usage.
 //! - **vk-mem** : Allow [vk-mem-rs][vk-mem-rs] allocator usage.
 //! - **custom-allocator** :  Allow passing any custom allocator.
-//! - **dynamic-rendering** : This feature is useful if you want to integrate the library in an app making use of Vulkan's dynamic rendering.
-//! When enabled, functions that usually takes a `vk::RenderPass` as argument will now take a `DynamicRendering` which
-//! contains the format of the color attachment the UI will be drawn to and an optional depth attachment format.
 //!
 //! ## Integration
 //!

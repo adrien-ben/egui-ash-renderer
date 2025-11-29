@@ -49,8 +49,15 @@ impl Default for Options {
     }
 }
 
+/// The used rendering mode.
+///
+/// It represent vulkan's render pass vs dynamic rendering.
+pub enum RenderMode {
+    RenderPass(vk::RenderPass),
+    DynamicRendering(DynamicRendering),
+}
+
 /// `dynamic-rendering` feature related params
-#[cfg(feature = "dynamic-rendering")]
 #[derive(Clone, Copy)]
 pub struct DynamicRendering {
     pub color_attachment_format: vk::Format,
@@ -91,8 +98,7 @@ impl Renderer<allocator::SimpleAllocator> {
     /// * `instance` - A reference to a Vulkan instance.
     /// * `physical_device` - A Vulkan physical device.
     /// * `device` - A Vulkan device.
-    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
-    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `render mode` - The rendering mode.
     /// * `options` - Rendering options.
     ///
     /// # Errors
@@ -103,8 +109,7 @@ impl Renderer<allocator::SimpleAllocator> {
         instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
         device: Device,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
         let memory_properties =
@@ -113,10 +118,7 @@ impl Renderer<allocator::SimpleAllocator> {
         Self::from_allocator(
             device,
             allocator::SimpleAllocator::new(memory_properties),
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
+            render_mode,
             options,
         )
     }
@@ -132,8 +134,7 @@ impl Renderer<allocator::GpuAllocator> {
     ///
     /// * `gpu_allocator` - The allocator that will be used to allocator buffer and image memory.
     /// * `device` - A Vulkan device.
-    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
-    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `render mode` - The rendering mode.
     /// * `options` - Rendering options.
     ///
     /// # Errors
@@ -143,17 +144,13 @@ impl Renderer<allocator::GpuAllocator> {
     pub fn with_gpu_allocator(
         gpu_allocator: std::sync::Arc<std::sync::Mutex<gpu_allocator::vulkan::Allocator>>,
         device: Device,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
         Renderer::from_allocator(
             device,
             allocator::GpuAllocator::new(gpu_allocator),
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
+            render_mode,
             options,
         )
     }
@@ -169,8 +166,7 @@ impl Renderer<allocator::VkMemAllocator> {
     ///
     /// * `vk_mem_allocator` - The allocator that will be used to allocator buffer and image memory.
     /// * `device` - A Vulkan device.
-    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
-    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `render mode` - The rendering mode.
     /// * `options` - Rendering options.
     ///
     /// # Errors
@@ -180,17 +176,13 @@ impl Renderer<allocator::VkMemAllocator> {
     pub fn with_vk_mem_allocator(
         vk_mem_allocator: std::sync::Arc<vk_mem::Allocator>,
         device: Device,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
         Self::from_allocator(
             device,
             allocator::VkMemAllocator::new(vk_mem_allocator),
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
+            render_mode,
             options,
         )
     }
@@ -206,8 +198,7 @@ impl<A: Allocator> Renderer<A> {
     ///
     /// * `allocator` - The custom allocator that will be used to allocator buffer and image memory.
     /// * `device` - A Vulkan device.
-    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
-    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `render mode` - The rendering mode.
     /// * `options` - Rendering options.
     ///
     /// # Errors
@@ -217,19 +208,10 @@ impl<A: Allocator> Renderer<A> {
     pub fn with_custom_allocator(
         allocator: A,
         device: Device,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
-        Self::from_allocator(
-            device,
-            allocator,
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
-            options,
-        )
+        Self::from_allocator(device, allocator, render_mode, options)
     }
 }
 
@@ -237,8 +219,7 @@ impl<A: Allocator> Renderer<A> {
     fn from_allocator(
         device: Device,
         allocator: A,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
         log::debug!("Creating egui renderer with options {options:?}");
@@ -254,15 +235,7 @@ impl<A: Allocator> Renderer<A> {
 
         // Pipeline and layout
         let pipeline_layout = create_vulkan_pipeline_layout(&device, descriptor_set_layout)?;
-        let pipeline = create_vulkan_pipeline(
-            &device,
-            pipeline_layout,
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
-            options,
-        )?;
+        let pipeline = create_vulkan_pipeline(&device, pipeline_layout, render_mode, options)?;
 
         // Descriptor pool
         let descriptor_pool = create_vulkan_descriptor_pool(&device, MAX_TEXTURE_COUNT)?;
@@ -286,52 +259,24 @@ impl<A: Allocator> Renderer<A> {
         })
     }
 
-    /// Change the render pass to render to.
+    /// Change the render mode.
     ///
-    /// Useful if you need to render to a new render pass.
+    /// Useful if you need to render to a new render pass or update dynamic rendering settings.
     /// It will rebuild the graphics pipeline from scratch so it is an expensive operation.
     ///
     /// # Arguments
     ///
-    /// * `render_pass` - The render pass used to render the gui.
+    /// * `render_mode` - The new render mode.
     ///
     /// # Errors
     ///
     /// * [`RendererError`] - If any Vulkan error is encountered during pipeline creation.
-    #[cfg(not(feature = "dynamic-rendering"))]
-    pub fn set_render_pass(&mut self, render_pass: vk::RenderPass) -> RendererResult<()> {
+    pub fn set_render_mode(&mut self, render_mode: RenderMode) -> RendererResult<()> {
         unsafe { self.device.destroy_pipeline(self.pipeline, None) };
         self.pipeline = create_vulkan_pipeline(
             &self.device,
             self.pipeline_layout,
-            render_pass,
-            self.options,
-        )?;
-        Ok(())
-    }
-
-    /// Change the dynamic rendering parameters.
-    ///
-    /// Useful if you need to render to a target of with another color/depth format.
-    /// It will rebuild the graphics pipeline from scratch so it is an expensive operation.
-    ///
-    /// # Arguments
-    ///
-    /// * `dynamic_rendering` - The new dynamic rendering parameters.
-    ///
-    /// # Errors
-    ///
-    /// * [`RendererError`] - If any Vulkan error is encountered during pipeline creation.
-    #[cfg(feature = "dynamic-rendering")]
-    pub fn set_dynamic_rendering(
-        &mut self,
-        dynamic_rendering: DynamicRendering,
-    ) -> RendererResult<()> {
-        unsafe { self.device.destroy_pipeline(self.pipeline, None) };
-        self.pipeline = create_vulkan_pipeline(
-            &self.device,
-            self.pipeline_layout,
-            dynamic_rendering,
+            render_mode,
             self.options,
         )?;
         Ok(())
