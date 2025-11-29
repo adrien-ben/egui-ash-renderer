@@ -1,7 +1,7 @@
 use ash::{Device, vk};
 use egui::epaint::ImageDelta;
 use egui::{ClippedPrimitive, TextureId};
-use egui_ash_renderer::{Options, Renderer};
+use egui_ash_renderer::{Options, RenderMode, Renderer};
 use egui_ash_renderer::{RendererResult, allocator::*};
 
 use crate::common::{Swapchain, VulkanContext};
@@ -28,18 +28,18 @@ impl AnyRenderer {
                 let renderer = AnyRenderer::Custom(Renderer::with_custom_allocator(
                     TrackingAllocator::new(SimpleAllocator::new(memory_properties)),
                     ctx.device.clone(),
-                    swapchain.render_pass,
+                    RenderMode::RenderPass(swapchain.render_pass),
                     Options {
                         srgb_framebuffer: true,
                         ..Default::default()
                     },
                 )?);
             } else if #[cfg(feature = "simple-allocator")] {
-                let renderer = AnyRenderer::Simple(Renderer::with_default_allocator(
+                let renderer = AnyRenderer::Simple(Renderer::with_simple_allocator(
                     &ctx.instance,
                     ctx.physical_device,
                     ctx.device.clone(),
-                    swapchain.render_pass,
+                    RenderMode::RenderPass(swapchain.render_pass),
                     Options {
                         srgb_framebuffer: true,
                         ..Default::default()
@@ -61,7 +61,7 @@ impl AnyRenderer {
                     AnyRenderer::Gpu(Renderer::with_gpu_allocator(
                         std::sync::Arc::new(std::sync::Mutex::new(allocator)),
                         ctx.device.clone(),
-                        swapchain.render_pass,
+                        RenderMode::RenderPass(swapchain.render_pass),
                         Options {
                             srgb_framebuffer: true,
                             ..Default::default()
@@ -83,7 +83,7 @@ impl AnyRenderer {
                     AnyRenderer::VkMem(Renderer::with_vk_mem_allocator(
                         std::sync::Arc::new(allocator),
                         ctx.device.clone(),
-                        swapchain.render_pass,
+                        RenderMode::RenderPass(swapchain.render_pass),
                         Options {
                             srgb_framebuffer: true,
                             ..Default::default()
@@ -110,16 +110,16 @@ impl AnyRenderer {
         }
     }
 
-    pub fn set_render_pass(&mut self, render_pass: vk::RenderPass) {
+    pub fn set_render_mode(&mut self, render_mode: RenderMode) {
         match self {
             #[cfg(feature = "simple-allocator")]
-            AnyRenderer::Simple(r) => r.set_render_pass(render_pass),
+            AnyRenderer::Simple(r) => r.set_render_mode(render_mode),
             #[cfg(feature = "gpu-allocator")]
-            AnyRenderer::Gpu(r) => r.set_render_pass(render_pass),
+            AnyRenderer::Gpu(r) => r.set_render_mode(render_mode),
             #[cfg(feature = "vk-mem")]
-            AnyRenderer::VkMem(r) => r.set_render_pass(render_pass),
+            AnyRenderer::VkMem(r) => r.set_render_mode(render_mode),
             #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-            AnyRenderer::Custom(r) => r.set_render_pass(render_pass),
+            AnyRenderer::Custom(r) => r.set_render_mode(render_mode),
         }
         .expect("Failed to rebuild renderer pipeline");
     }
