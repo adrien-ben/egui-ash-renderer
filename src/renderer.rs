@@ -89,7 +89,7 @@ pub struct Renderer<A: Allocator> {
 
 #[cfg(feature = "simple-allocator")]
 impl Renderer<allocator::SimpleAllocator> {
-    /// Create a renderer using the default allocator.
+    /// Create a renderer using the simple allocator.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
     ///
@@ -105,7 +105,7 @@ impl Renderer<allocator::SimpleAllocator> {
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    pub fn with_default_allocator(
+    pub fn with_simple_allocator(
         instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
         device: Device,
