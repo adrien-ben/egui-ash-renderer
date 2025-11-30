@@ -86,9 +86,8 @@ pub struct Renderer<A: Allocator> {
     frames: Option<Frames<A>>,
 }
 
-#[cfg(feature = "simple-allocator")]
-impl Renderer<allocator::SimpleAllocator> {
-    /// Create a renderer using the simple allocator.
+impl Renderer<allocator::DefaultAllocator> {
+    /// Create a renderer using the default allocator.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
     ///
@@ -104,7 +103,7 @@ impl Renderer<allocator::SimpleAllocator> {
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    pub fn with_simple_allocator(
+    pub fn with_default_allocator(
         instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
         device: Device,
@@ -114,9 +113,9 @@ impl Renderer<allocator::SimpleAllocator> {
         let memory_properties =
             unsafe { instance.get_physical_device_memory_properties(physical_device) };
 
-        Self::from_allocator(
+        Self::with_allocator(
+            allocator::DefaultAllocator::new(memory_properties),
             device,
-            allocator::SimpleAllocator::new(memory_properties),
             render_mode,
             options,
         )
@@ -146,9 +145,9 @@ impl Renderer<allocator::GpuAllocator> {
         render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
-        Renderer::from_allocator(
-            device,
+        Renderer::with_allocator(
             allocator::GpuAllocator::new(gpu_allocator),
+            device,
             render_mode,
             options,
         )
@@ -178,16 +177,15 @@ impl Renderer<allocator::VkMemAllocator> {
         render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
-        Self::from_allocator(
-            device,
+        Self::with_allocator(
             allocator::VkMemAllocator::new(vk_mem_allocator),
+            device,
             render_mode,
             options,
         )
     }
 }
 
-#[cfg(feature = "custom-allocator")]
 impl<A: Allocator> Renderer<A> {
     /// Create a renderer using the provided allocator.
     ///
@@ -204,20 +202,9 @@ impl<A: Allocator> Renderer<A> {
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    pub fn with_custom_allocator(
+    pub fn with_allocator(
         allocator: A,
         device: Device,
-        render_mode: RenderMode,
-        options: Options,
-    ) -> RendererResult<Self> {
-        Self::from_allocator(device, allocator, render_mode, options)
-    }
-}
-
-impl<A: Allocator> Renderer<A> {
-    fn from_allocator(
-        device: Device,
-        allocator: A,
         render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {

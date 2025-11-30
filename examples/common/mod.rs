@@ -28,13 +28,6 @@ use winit::{
 
 use crate::common::renderer::AnyRenderer;
 
-#[cfg(not(any(
-    feature = "simple-allocator",
-    feature = "gpu-allocator",
-    feature = "vk-mem"
-)))]
-compile_error!("at least one of simple-allocator, gpu-allocator or vk-mem feature must be enabled");
-
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 1024;
 
