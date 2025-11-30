@@ -8,44 +8,17 @@ use crate::common::{Swapchain, VulkanContext};
 
 #[allow(dead_code)]
 pub enum AnyRenderer {
-    #[cfg(feature = "simple-allocator")]
-    Simple(Renderer<SimpleAllocator>),
+    Default(Renderer<TrackingAllocator<DefaultAllocator>>),
     #[cfg(feature = "gpu-allocator")]
-    Gpu(Renderer<GpuAllocator>),
+    Gpu(Renderer<TrackingAllocator<GpuAllocator>>),
     #[cfg(feature = "vk-mem")]
-    VkMem(Renderer<VkMemAllocator>),
-    #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-    Custom(Renderer<TrackingAllocator<SimpleAllocator>>),
+    VkMem(Renderer<TrackingAllocator<VkMemAllocator>>),
 }
 
 impl AnyRenderer {
     pub fn build(ctx: &VulkanContext, swapchain: &Swapchain) -> RendererResult<Self> {
         cfg_if::cfg_if! {
-            if #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))] {
-                let memory_properties = unsafe {
-                    ctx.instance.get_physical_device_memory_properties(ctx.physical_device)
-                };
-                let renderer = AnyRenderer::Custom(Renderer::with_custom_allocator(
-                    TrackingAllocator::new(SimpleAllocator::new(memory_properties)),
-                    ctx.device.clone(),
-                    RenderMode::RenderPass(swapchain.render_pass),
-                    Options {
-                        srgb_framebuffer: true,
-                        ..Default::default()
-                    },
-                )?);
-            } else if #[cfg(feature = "simple-allocator")] {
-                let renderer = AnyRenderer::Simple(Renderer::with_simple_allocator(
-                    &ctx.instance,
-                    ctx.physical_device,
-                    ctx.device.clone(),
-                    RenderMode::RenderPass(swapchain.render_pass),
-                    Options {
-                        srgb_framebuffer: true,
-                        ..Default::default()
-                    },
-                )?);
-            } else if #[cfg(feature = "gpu-allocator")] {
+            if #[cfg(feature = "gpu-allocator")] {
                 let renderer = {
                     let allocator = gpu_allocator::vulkan::Allocator::new(
                         &gpu_allocator::vulkan::AllocatorCreateDesc {
@@ -58,8 +31,8 @@ impl AnyRenderer {
                         },
                     )?;
 
-                    AnyRenderer::Gpu(Renderer::with_gpu_allocator(
-                        std::sync::Arc::new(std::sync::Mutex::new(allocator)),
+                    AnyRenderer::Gpu(Renderer::with_allocator(
+                    TrackingAllocator::new(GpuAllocator::new(std::sync::Arc::new(std::sync::Mutex::new(allocator)))),
                         ctx.device.clone(),
                         RenderMode::RenderPass(swapchain.render_pass),
                         Options {
@@ -80,8 +53,8 @@ impl AnyRenderer {
                         unsafe { vk_mem::Allocator::new(allocator_create_info)? }
                     };
 
-                    AnyRenderer::VkMem(Renderer::with_vk_mem_allocator(
-                        std::sync::Arc::new(allocator),
+                    AnyRenderer::VkMem(Renderer::with_allocator(
+                        TrackingAllocator::new(VkMemAllocator::new(std::sync::Arc::new(allocator))),
                         ctx.device.clone(),
                         RenderMode::RenderPass(swapchain.render_pass),
                         Options {
@@ -90,6 +63,19 @@ impl AnyRenderer {
                         },
                     )?)
                 };
+            } else {
+                let memory_properties = unsafe {
+                    ctx.instance.get_physical_device_memory_properties(ctx.physical_device)
+                };
+                let renderer = AnyRenderer::Default(Renderer::with_allocator(
+                    TrackingAllocator::new(DefaultAllocator::new(memory_properties)),
+                    ctx.device.clone(),
+                    RenderMode::RenderPass(swapchain.render_pass),
+                    Options {
+                        srgb_framebuffer: true,
+                        ..Default::default()
+                    },
+                )?);
             }
         }
 
@@ -99,41 +85,32 @@ impl AnyRenderer {
 
     pub fn get_name(&self) -> &'static str {
         match self {
-            #[cfg(feature = "simple-allocator")]
-            AnyRenderer::Simple(_) => "simple",
+            AnyRenderer::Default(_) => "default",
             #[cfg(feature = "gpu-allocator")]
             AnyRenderer::Gpu(_) => "gpu",
             #[cfg(feature = "vk-mem")]
             AnyRenderer::VkMem(_) => "vk-mem",
-            #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-            AnyRenderer::Custom(_) => "custom",
         }
     }
 
     pub fn set_render_mode(&mut self, render_mode: RenderMode) {
         match self {
-            #[cfg(feature = "simple-allocator")]
-            AnyRenderer::Simple(r) => r.set_render_mode(render_mode),
+            AnyRenderer::Default(r) => r.set_render_mode(render_mode),
             #[cfg(feature = "gpu-allocator")]
             AnyRenderer::Gpu(r) => r.set_render_mode(render_mode),
             #[cfg(feature = "vk-mem")]
             AnyRenderer::VkMem(r) => r.set_render_mode(render_mode),
-            #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-            AnyRenderer::Custom(r) => r.set_render_mode(render_mode),
         }
         .expect("Failed to rebuild renderer pipeline");
     }
 
     pub fn free_textures(&mut self, ids: &[TextureId]) {
         match self {
-            #[cfg(feature = "simple-allocator")]
-            AnyRenderer::Simple(r) => r.free_textures(ids),
+            AnyRenderer::Default(r) => r.free_textures(ids),
             #[cfg(feature = "gpu-allocator")]
             AnyRenderer::Gpu(r) => r.free_textures(ids),
             #[cfg(feature = "vk-mem")]
             AnyRenderer::VkMem(r) => r.free_textures(ids),
-            #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-            AnyRenderer::Custom(r) => r.free_textures(ids),
         }
         .expect("Failed to free textures");
     }
@@ -145,14 +122,11 @@ impl AnyRenderer {
         textures_delta: &[(TextureId, ImageDelta)],
     ) {
         match self {
-            #[cfg(feature = "simple-allocator")]
-            AnyRenderer::Simple(r) => r.set_textures(queue, command_pool, textures_delta),
+            AnyRenderer::Default(r) => r.set_textures(queue, command_pool, textures_delta),
             #[cfg(feature = "gpu-allocator")]
             AnyRenderer::Gpu(r) => r.set_textures(queue, command_pool, textures_delta),
             #[cfg(feature = "vk-mem")]
             AnyRenderer::VkMem(r) => r.set_textures(queue, command_pool, textures_delta),
-            #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-            AnyRenderer::Custom(r) => r.set_textures(queue, command_pool, textures_delta),
         }
         .expect("Failed to update texture")
     }
@@ -160,14 +134,11 @@ impl AnyRenderer {
     #[allow(dead_code)]
     pub fn add_user_texture(&mut self, set: vk::DescriptorSet) -> TextureId {
         match self {
-            #[cfg(feature = "simple-allocator")]
-            AnyRenderer::Simple(r) => r.add_user_texture(set),
+            AnyRenderer::Default(r) => r.add_user_texture(set),
             #[cfg(feature = "gpu-allocator")]
             AnyRenderer::Gpu(r) => r.add_user_texture(set),
             #[cfg(feature = "vk-mem")]
             AnyRenderer::VkMem(r) => r.add_user_texture(set),
-            #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-            AnyRenderer::Custom(r) => r.add_user_texture(set),
         }
     }
 
@@ -179,18 +150,13 @@ impl AnyRenderer {
         primitives: &[ClippedPrimitive],
     ) -> RendererResult<()> {
         match self {
-            #[cfg(feature = "simple-allocator")]
-            AnyRenderer::Simple(r) => {
+            AnyRenderer::Default(r) => {
                 r.cmd_draw(command_buffer, extent, pixels_per_point, primitives)
             }
             #[cfg(feature = "gpu-allocator")]
             AnyRenderer::Gpu(r) => r.cmd_draw(command_buffer, extent, pixels_per_point, primitives),
             #[cfg(feature = "vk-mem")]
             AnyRenderer::VkMem(r) => {
-                r.cmd_draw(command_buffer, extent, pixels_per_point, primitives)
-            }
-            #[cfg(all(feature = "custom-allocator", feature = "simple-allocator"))]
-            AnyRenderer::Custom(r) => {
                 r.cmd_draw(command_buffer, extent, pixels_per_point, primitives)
             }
         }

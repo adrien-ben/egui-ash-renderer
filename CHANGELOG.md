@@ -2,16 +2,14 @@
 
 ## current
 
-- new `simple-allocator` feature. enabled by default.
-- the `Allocator` trait is now public.
-- new `custom-allocator` feature allowing to create an renderer with a custom allocator.
+- Made `Allocator` trait public.
+- Added `Renderer::with_allocator` which can take any type implementing `Allocator`.
 
 ### Breaking
 
 - Renderer is now generic over the `Allocator` trait.
 - Remove `dynamic-rendering` feature.
 - Functions that used to take `vk::RenderPass` or `DynamicRendering` now take `RenderMode` instead.
-- `Renderer::with_default_allocator` is now `Renderer::with_simple_allocator`.
 
 ## 0.12.0
 

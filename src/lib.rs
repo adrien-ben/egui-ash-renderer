@@ -99,10 +99,9 @@
 //! GPU memory allocations are made using allocators. An allocator in any type that implements [`allocator::Allocator`]. You can use one of
 //! the provided allocators or implement your own.
 //!
-//! ### Simple allocator
+//! ### Default allocator
 //!
-//! Simple allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. Created with [`Renderer::with_simple_allocator`].
-//! Requires the `simple-allocator` feature.
+//! Default allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. Created with [`Renderer::with_default_allocator`].
 //!
 //! ### GPU Allocator
 //!
@@ -116,28 +115,26 @@
 //!
 //! ### Custom allocator
 //!
-//! You can pass your own allocator using [`Renderer::with_custom_allocator`]. Requires the `custom-allocator` feature.
+//! You can pass your own allocator using [`Renderer::with_allocator`].
 //!
 //! Here is [an example of custom delegating allocator](./examples/common/renderer.rs).
 //!
 //! ## Render mode
-//! 
+//!
 //! The renderer supports rendering with a render pass or using dynamic rendering. It is done by passing `RenderMode` when creating the renderer.
-//! 
+//!
 //! ## Features
 //!
-//! - **simple-allocator** : Allow simple allocator usage.
 //! - **gpu-allocator** : Allow [gpu-allocator][gpu-allocator] allocator usage.
 //! - **vk-mem** : Allow [vk-mem-rs][vk-mem-rs] allocator usage.
-//! - **custom-allocator** :  Allow passing any custom allocator.
 //!
 //! ## Integration
 //!
 //! You can find an example of integration with [winit][winit] in the [common module](examples/common/mod.rs) of the examples.
 //!
 //! ```rust
-//! // Example with simple allocator
-//! let renderer : Renderer<SimpleAllocator> = Renderer::with_simple_allocator(
+//! // Example with default allocator
+//! let renderer : Renderer<DefaultAllocator> = Renderer::with_default_allocator(
 //!     &vk_instance,
 //!     vk_physical_device,
 //!     vk_device.clone(),

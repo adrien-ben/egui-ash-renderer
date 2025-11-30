@@ -1,4 +1,3 @@
-#[cfg(feature = "simple-allocator")]
 mod default;
 
 #[cfg(feature = "gpu-allocator")]
@@ -7,8 +6,7 @@ mod gpu;
 #[cfg(feature = "vk-mem")]
 mod vkmem;
 
-#[cfg(feature = "simple-allocator")]
-pub use default::Allocator as SimpleAllocator;
+pub use default::Allocator as DefaultAllocator;
 
 #[cfg(feature = "gpu-allocator")]
 pub use gpu::Allocator as GpuAllocator;
