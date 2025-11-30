@@ -2,14 +2,15 @@ use crate::{RendererError, RendererResult};
 use ash::{Device, vk};
 use gpu_allocator::{
     MemoryLocation,
-    vulkan::{Allocation, AllocationCreateDesc, AllocationScheme, Allocator as GpuAllocator},
+    vulkan::{
+        Allocation as GpuAllocation, AllocationCreateDesc, AllocationScheme,
+        Allocator as GpuAllocator,
+    },
 };
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use super::Allocate;
-
 /// Abstraction over memory used by Vulkan resources.
-pub type Memory = Allocation;
+type Allocation = GpuAllocation;
 
 pub struct Allocator {
     pub allocator: Arc<Mutex<GpuAllocator>>,
@@ -27,15 +28,15 @@ impl Allocator {
     }
 }
 
-impl Allocate for Allocator {
-    type Memory = Memory;
+impl super::Allocator for Allocator {
+    type Allocation = Allocation;
 
     fn create_buffer(
         &mut self,
         device: &Device,
         size: usize,
         usage: vk::BufferUsageFlags,
-    ) -> RendererResult<(vk::Buffer, Self::Memory)> {
+    ) -> RendererResult<(vk::Buffer, Allocation)> {
         let buffer_info = vk::BufferCreateInfo::default()
             .size(size as _)
             .usage(usage)
@@ -64,7 +65,7 @@ impl Allocate for Allocator {
         device: &Device,
         width: u32,
         height: u32,
-    ) -> RendererResult<(vk::Image, Self::Memory)> {
+    ) -> RendererResult<(vk::Image, Allocation)> {
         let extent = vk::Extent3D {
             width,
             height,
@@ -106,7 +107,7 @@ impl Allocate for Allocator {
         &mut self,
         device: &Device,
         buffer: vk::Buffer,
-        memory: Self::Memory,
+        memory: Allocation,
     ) -> RendererResult<()> {
         let mut allocator = self.get_allocator()?;
 
@@ -120,7 +121,7 @@ impl Allocate for Allocator {
         &mut self,
         device: &Device,
         image: vk::Image,
-        memory: Self::Memory,
+        memory: Allocation,
     ) -> RendererResult<()> {
         let mut allocator = self.get_allocator()?;
 
@@ -133,7 +134,7 @@ impl Allocate for Allocator {
     fn update_buffer<T: Copy>(
         &mut self,
         _device: &Device,
-        memory: &mut Self::Memory,
+        memory: &mut Allocation,
         data: &[T],
     ) -> RendererResult<()> {
         let size = std::mem::size_of_val(data) as _;

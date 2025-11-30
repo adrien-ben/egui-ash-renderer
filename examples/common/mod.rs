@@ -1,3 +1,4 @@
+mod renderer;
 pub mod vulkan;
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -9,7 +10,7 @@ use ash::{
     vk,
 };
 use egui::{ClippedPrimitive, Context, TextureId, ViewportId};
-use egui_ash_renderer::{Options, Renderer};
+use egui_ash_renderer::RenderMode;
 use egui_winit::State;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use std::{
@@ -24,16 +25,8 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     window::{Window, WindowId},
 };
-#[cfg(feature = "gpu-allocator")]
-use {
-    gpu_allocator::vulkan::{Allocator, AllocatorCreateDesc},
-    std::sync::{Arc, Mutex},
-};
-#[cfg(feature = "vk-mem")]
-use {
-    std::sync::Arc,
-    vk_mem::{Allocator, AllocatorCreateInfo},
-};
+
+use crate::common::renderer::AnyRenderer;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 1024;
@@ -116,7 +109,7 @@ pub struct System {
 
     pub egui_ctx: Context,
     pub egui_winit: State,
-    pub renderer: Renderer,
+    pub renderer: AnyRenderer,
 
     textures_to_free: Option<Vec<TextureId>>,
 
@@ -177,62 +170,7 @@ impl System {
             None,
         );
 
-        #[cfg(feature = "gpu-allocator")]
-        let renderer = {
-            let allocator = Allocator::new(&AllocatorCreateDesc {
-                instance: vulkan_context.instance.clone(),
-                device: vulkan_context.device.clone(),
-                physical_device: vulkan_context.physical_device,
-                debug_settings: Default::default(),
-                buffer_device_address: false,
-                allocation_sizes: Default::default(),
-            })?;
-
-            Renderer::with_gpu_allocator(
-                Arc::new(Mutex::new(allocator)),
-                vulkan_context.device.clone(),
-                swapchain.render_pass,
-                Options {
-                    srgb_framebuffer: true,
-                    ..Default::default()
-                },
-            )?
-        };
-
-        #[cfg(feature = "vk-mem")]
-        let renderer = {
-            let allocator = {
-                let allocator_create_info = AllocatorCreateInfo::new(
-                    &vulkan_context.instance,
-                    &vulkan_context.device,
-                    vulkan_context.physical_device,
-                );
-
-                unsafe { Allocator::new(allocator_create_info)? }
-            };
-
-            Renderer::with_vk_mem_allocator(
-                Arc::new(allocator),
-                vulkan_context.device.clone(),
-                swapchain.render_pass,
-                Options {
-                    srgb_framebuffer: true,
-                    ..Default::default()
-                },
-            )?
-        };
-
-        #[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
-        let renderer = Renderer::with_default_allocator(
-            &vulkan_context.instance,
-            vulkan_context.physical_device,
-            vulkan_context.device.clone(),
-            swapchain.render_pass,
-            Options {
-                srgb_framebuffer: true,
-                ..Default::default()
-            },
-        )?;
+        let renderer = AnyRenderer::build(&vulkan_context, &swapchain)?;
 
         Ok(Self {
             vulkan_context,
@@ -262,8 +200,8 @@ impl System {
                     .recreate(&self.vulkan_context)
                     .expect("Failed to recreate swapchain");
                 self.renderer
-                    .set_render_pass(self.swapchain.render_pass)
-                    .expect("Failed to rebuild renderer pipeline");
+                    .set_render_mode(RenderMode::RenderPass(self.swapchain.render_pass));
+
                 self.dirty_swapchain = false;
             } else {
                 return;
@@ -283,9 +221,7 @@ impl System {
 
         // Free last frames textures after the previous frame is done rendering
         if let Some(textures) = self.textures_to_free.take() {
-            self.renderer
-                .free_textures(&textures)
-                .expect("Failed to free textures");
+            self.renderer.free_textures(&textures);
         }
 
         // Generate UI
@@ -309,13 +245,11 @@ impl System {
         }
 
         if !textures_delta.set.is_empty() {
-            self.renderer
-                .set_textures(
-                    self.vulkan_context.graphics_queue,
-                    self.vulkan_context.command_pool,
-                    textures_delta.set.as_slice(),
-                )
-                .expect("Failed to update texture");
+            self.renderer.set_textures(
+                self.vulkan_context.graphics_queue,
+                self.vulkan_context.command_pool,
+                textures_delta.set.as_slice(),
+            );
         }
 
         let clipped_primitives = self.egui_ctx.tessellate(shapes, pixels_per_point);
@@ -543,7 +477,7 @@ impl Drop for VulkanContext {
     }
 }
 
-struct Swapchain {
+pub struct Swapchain {
     loader: swapchain::Device,
     extent: vk::Extent2D,
     khr: vk::SwapchainKHR,
@@ -1049,7 +983,7 @@ fn record_command_buffers(
     render_pass: vk::RenderPass,
     extent: vk::Extent2D,
     pixels_per_point: f32,
-    renderer: &mut Renderer,
+    renderer: &mut AnyRenderer,
 
     clipped_primitives: &[ClippedPrimitive],
 ) -> Result<(), Box<dyn Error>> {

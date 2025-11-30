@@ -1,27 +1,25 @@
-#[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
 mod default;
-
-#[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
-pub use self::default::{Allocator, Memory};
 
 #[cfg(feature = "gpu-allocator")]
 mod gpu;
 
-#[cfg(feature = "gpu-allocator")]
-pub use self::gpu::{Allocator, Memory};
-
 #[cfg(feature = "vk-mem")]
 mod vkmem;
 
+pub use default::Allocator as DefaultAllocator;
+
+#[cfg(feature = "gpu-allocator")]
+pub use gpu::Allocator as GpuAllocator;
+
 #[cfg(feature = "vk-mem")]
-pub use self::vkmem::{Allocator, Memory};
+pub use vkmem::Allocator as VkMemAllocator;
 
 use crate::RendererResult;
 use ash::{Device, vk};
 
 /// Base allocator trait for all implementations.
-pub trait Allocate {
-    type Memory;
+pub trait Allocator {
+    type Allocation;
 
     /// Create a Vulkan buffer.
     ///
@@ -35,7 +33,7 @@ pub trait Allocate {
         device: &Device,
         size: usize,
         usage: vk::BufferUsageFlags,
-    ) -> RendererResult<(vk::Buffer, Self::Memory)>;
+    ) -> RendererResult<(vk::Buffer, Self::Allocation)>;
 
     /// Create a Vulkan image.
     ///
@@ -51,7 +49,7 @@ pub trait Allocate {
         device: &Device,
         width: u32,
         height: u32,
-    ) -> RendererResult<(vk::Image, Self::Memory)>;
+    ) -> RendererResult<(vk::Image, Self::Allocation)>;
 
     /// Destroys a buffer.
     ///
@@ -64,7 +62,7 @@ pub trait Allocate {
         &mut self,
         device: &Device,
         buffer: vk::Buffer,
-        memory: Self::Memory,
+        memory: Self::Allocation,
     ) -> RendererResult<()>;
 
     /// Destroys an image.
@@ -78,7 +76,7 @@ pub trait Allocate {
         &mut self,
         device: &Device,
         image: vk::Image,
-        memory: Self::Memory,
+        memory: Self::Allocation,
     ) -> RendererResult<()>;
 
     /// Update buffer data
@@ -91,7 +89,7 @@ pub trait Allocate {
     fn update_buffer<T: Copy>(
         &mut self,
         device: &Device,
-        memory: &mut Self::Memory,
+        memory: &mut Self::Allocation,
         data: &[T],
     ) -> RendererResult<()>;
 }
