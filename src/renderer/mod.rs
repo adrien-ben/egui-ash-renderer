@@ -68,6 +68,7 @@ impl Default for Options {
 pub struct DynamicRendering {
     pub color_attachment_format: vk::Format,
     pub depth_attachment_format: Option<vk::Format>,
+    pub stencil_attachment_format: Option<vk::Format>,
 }
 
 /// Vulkan renderer for egui.
