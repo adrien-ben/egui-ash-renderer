@@ -64,7 +64,7 @@ impl Default for Options {
 
 /// `dynamic-rendering` feature related params
 #[cfg(feature = "dynamic-rendering")]
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct DynamicRendering {
     pub color_attachment_format: vk::Format,
     pub depth_attachment_format: Option<vk::Format>,
