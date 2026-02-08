@@ -212,6 +212,9 @@ pub(crate) fn create_vulkan_pipeline(
         if let Some(depth_attachment_format) = dynamic_rendering.depth_attachment_format {
             rendering_info = rendering_info.depth_attachment_format(depth_attachment_format);
         }
+        if let Some(stencil_attachment_format) = dynamic_rendering.stencil_attachment_format {
+            rendering_info = rendering_info.stencil_attachment_format(stencil_attachment_format);
+        }
         rendering_info
     };
     #[cfg(feature = "dynamic-rendering")]
