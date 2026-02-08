@@ -1,9 +1,10 @@
-mod allocator;
+pub mod allocator;
 pub mod vulkan;
 
 use std::collections::HashMap;
 
 use crate::RendererError;
+use allocator::Allocator;
 use ash::{Device, vk};
 use egui::{
     ClippedPrimitive, ImageData, TextureId,
@@ -11,20 +12,6 @@ use egui::{
 };
 use mesh::*;
 use vulkan::*;
-
-use self::allocator::Allocator;
-
-#[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
-use ash::Instance;
-
-#[cfg(feature = "gpu-allocator")]
-use {
-    gpu_allocator::vulkan::Allocator as GpuAllocator,
-    std::sync::{Arc, Mutex},
-};
-
-#[cfg(feature = "vk-mem")]
-use {std::sync::Arc, vk_mem::Allocator as VkMemAllocator};
 
 /// Convenient return type for function that can return a [`RendererError`].
 ///
@@ -62,8 +49,15 @@ impl Default for Options {
     }
 }
 
+/// The used rendering mode.
+///
+/// It represent vulkan's render pass vs dynamic rendering.
+pub enum RenderMode {
+    RenderPass(vk::RenderPass),
+    DynamicRendering(DynamicRendering),
+}
+
 /// `dynamic-rendering` feature related params
-#[cfg(feature = "dynamic-rendering")]
 #[derive(Clone, Copy)]
 pub struct DynamicRendering {
     pub color_attachment_format: vk::Format,
@@ -79,21 +73,21 @@ pub struct DynamicRendering {
 /// are resized at each call to [`cmd_draw`] if draw data does not fit.
 ///
 /// [`cmd_draw`]: #method.cmd_draw
-pub struct Renderer {
+pub struct Renderer<A: Allocator> {
     device: Device,
-    allocator: Allocator,
+    allocator: A,
     pipeline: vk::Pipeline,
     pipeline_layout: vk::PipelineLayout,
     descriptor_set_layout: vk::DescriptorSetLayout,
     descriptor_pool: vk::DescriptorPool,
-    managed_textures: HashMap<TextureId, Texture>,
+    managed_textures: HashMap<TextureId, Texture<A>>,
     textures: HashMap<TextureId, vk::DescriptorSet>,
     next_user_texture_id: u64,
     options: Options,
-    frames: Option<Frames>,
+    frames: Option<Frames<A>>,
 }
 
-impl Renderer {
+impl Renderer<allocator::DefaultAllocator> {
     /// Create a renderer using the default allocator.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
@@ -103,37 +97,34 @@ impl Renderer {
     /// * `instance` - A reference to a Vulkan instance.
     /// * `physical_device` - A Vulkan physical device.
     /// * `device` - A Vulkan device.
-    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
-    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `render mode` - The rendering mode.
     /// * `options` - Rendering options.
     ///
     /// # Errors
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    #[cfg(not(any(feature = "gpu-allocator", feature = "vk-mem")))]
     pub fn with_default_allocator(
-        instance: &Instance,
+        instance: &ash::Instance,
         physical_device: vk::PhysicalDevice,
         device: Device,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
         let memory_properties =
             unsafe { instance.get_physical_device_memory_properties(physical_device) };
 
-        Self::from_allocator(
+        Self::with_allocator(
+            allocator::DefaultAllocator::new(memory_properties),
             device,
-            Allocator::new(memory_properties),
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
+            render_mode,
             options,
         )
     }
+}
 
+#[cfg(feature = "gpu-allocator")]
+impl Renderer<allocator::GpuAllocator> {
     /// Create a renderer using gpu-allocator.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
@@ -142,33 +133,30 @@ impl Renderer {
     ///
     /// * `gpu_allocator` - The allocator that will be used to allocator buffer and image memory.
     /// * `device` - A Vulkan device.
-    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
-    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `render mode` - The rendering mode.
     /// * `options` - Rendering options.
     ///
     /// # Errors
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    #[cfg(feature = "gpu-allocator")]
     pub fn with_gpu_allocator(
-        gpu_allocator: Arc<Mutex<GpuAllocator>>,
+        gpu_allocator: std::sync::Arc<std::sync::Mutex<gpu_allocator::vulkan::Allocator>>,
         device: Device,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
-        Self::from_allocator(
+        Renderer::with_allocator(
+            allocator::GpuAllocator::new(gpu_allocator),
             device,
-            Allocator::new(gpu_allocator),
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
+            render_mode,
             options,
         )
     }
+}
 
+#[cfg(feature = "vk-mem")]
+impl Renderer<allocator::VkMemAllocator> {
     /// Create a renderer using vk-mem.
     ///
     /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
@@ -177,38 +165,48 @@ impl Renderer {
     ///
     /// * `vk_mem_allocator` - The allocator that will be used to allocator buffer and image memory.
     /// * `device` - A Vulkan device.
-    /// * `render_pass` - *without dynamic-rendering feature* - The render pass used to render the gui.
-    /// * `dynamic_rendering` - *with dynamic-rendering feature* - Dynamic rendeing parameters
+    /// * `render mode` - The rendering mode.
     /// * `options` - Rendering options.
     ///
     /// # Errors
     ///
     /// * [`RendererError`] - If the number of in flight frame in incorrect.
     /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
-    #[cfg(feature = "vk-mem")]
     pub fn with_vk_mem_allocator(
-        vk_mem_allocator: Arc<VkMemAllocator>,
+        vk_mem_allocator: std::sync::Arc<vk_mem::Allocator>,
         device: Device,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
-        Self::from_allocator(
+        Self::with_allocator(
+            allocator::VkMemAllocator::new(vk_mem_allocator),
             device,
-            Allocator::new(vk_mem_allocator),
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
+            render_mode,
             options,
         )
     }
+}
 
-    fn from_allocator(
+impl<A: Allocator> Renderer<A> {
+    /// Create a renderer using the provided allocator.
+    ///
+    /// At initialization all Vulkan resources are initialized. Vertex and index buffers are not created yet.
+    ///
+    /// # Arguments
+    ///
+    /// * `allocator` - The allocator that will be used to allocator buffer and image memory.
+    /// * `device` - A Vulkan device.
+    /// * `render mode` - The rendering mode.
+    /// * `options` - Rendering options.
+    ///
+    /// # Errors
+    ///
+    /// * [`RendererError`] - If the number of in flight frame in incorrect.
+    /// * [`RendererError`] - If any Vulkan or io error is encountered during initialization.
+    pub fn with_allocator(
+        allocator: A,
         device: Device,
-        allocator: Allocator,
-        #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-        #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+        render_mode: RenderMode,
         options: Options,
     ) -> RendererResult<Self> {
         log::debug!("Creating egui renderer with options {options:?}");
@@ -224,15 +222,7 @@ impl Renderer {
 
         // Pipeline and layout
         let pipeline_layout = create_vulkan_pipeline_layout(&device, descriptor_set_layout)?;
-        let pipeline = create_vulkan_pipeline(
-            &device,
-            pipeline_layout,
-            #[cfg(not(feature = "dynamic-rendering"))]
-            render_pass,
-            #[cfg(feature = "dynamic-rendering")]
-            dynamic_rendering,
-            options,
-        )?;
+        let pipeline = create_vulkan_pipeline(&device, pipeline_layout, render_mode, options)?;
 
         // Descriptor pool
         let descriptor_pool = create_vulkan_descriptor_pool(&device, MAX_TEXTURE_COUNT)?;
@@ -256,52 +246,24 @@ impl Renderer {
         })
     }
 
-    /// Change the render pass to render to.
+    /// Change the render mode.
     ///
-    /// Useful if you need to render to a new render pass.
+    /// Useful if you need to render to a new render pass or update dynamic rendering settings.
     /// It will rebuild the graphics pipeline from scratch so it is an expensive operation.
     ///
     /// # Arguments
     ///
-    /// * `render_pass` - The render pass used to render the gui.
+    /// * `render_mode` - The new render mode.
     ///
     /// # Errors
     ///
     /// * [`RendererError`] - If any Vulkan error is encountered during pipeline creation.
-    #[cfg(not(feature = "dynamic-rendering"))]
-    pub fn set_render_pass(&mut self, render_pass: vk::RenderPass) -> RendererResult<()> {
+    pub fn set_render_mode(&mut self, render_mode: RenderMode) -> RendererResult<()> {
         unsafe { self.device.destroy_pipeline(self.pipeline, None) };
         self.pipeline = create_vulkan_pipeline(
             &self.device,
             self.pipeline_layout,
-            render_pass,
-            self.options,
-        )?;
-        Ok(())
-    }
-
-    /// Change the dynamic rendering parameters.
-    ///
-    /// Useful if you need to render to a target of with another color/depth format.
-    /// It will rebuild the graphics pipeline from scratch so it is an expensive operation.
-    ///
-    /// # Arguments
-    ///
-    /// * `dynamic_rendering` - The new dynamic rendering parameters.
-    ///
-    /// # Errors
-    ///
-    /// * [`RendererError`] - If any Vulkan error is encountered during pipeline creation.
-    #[cfg(feature = "dynamic-rendering")]
-    pub fn set_dynamic_rendering(
-        &mut self,
-        dynamic_rendering: DynamicRendering,
-    ) -> RendererResult<()> {
-        unsafe { self.device.destroy_pipeline(self.pipeline, None) };
-        self.pipeline = create_vulkan_pipeline(
-            &self.device,
-            self.pipeline_layout,
-            dynamic_rendering,
+            render_mode,
             self.options,
         )?;
         Ok(())
@@ -627,7 +589,7 @@ impl Renderer {
     }
 }
 
-impl Drop for Renderer {
+impl<A: Allocator> Drop for Renderer<A> {
     fn drop(&mut self) {
         log::debug!("Destroying egui renderer");
         let device = &self.device;
@@ -652,16 +614,16 @@ impl Drop for Renderer {
 }
 
 // Structure holding data for all frames in flight.
-struct Frames {
+struct Frames<A: Allocator> {
     index: usize,
     count: usize,
-    meshes: Vec<Mesh>,
+    meshes: Vec<Mesh<A>>,
 }
 
-impl Frames {
+impl<A: Allocator> Frames<A> {
     fn new(
         device: &Device,
-        allocator: &mut Allocator,
+        allocator: &mut A,
         primitives: &[ClippedPrimitive],
         count: usize,
     ) -> RendererResult<Self> {
@@ -675,13 +637,13 @@ impl Frames {
         })
     }
 
-    fn next(&mut self) -> &mut Mesh {
+    fn next(&mut self) -> &mut Mesh<A> {
         let result = &mut self.meshes[self.index];
         self.index = (self.index + 1) % self.count;
         result
     }
 
-    fn destroy(self, device: &Device, allocator: &mut Allocator) -> RendererResult<()> {
+    fn destroy(self, device: &Device, allocator: &mut A) -> RendererResult<()> {
         for mesh in self.meshes.into_iter() {
             mesh.destroy(device, allocator)?;
         }
@@ -691,7 +653,7 @@ impl Frames {
 
 mod mesh {
 
-    use super::allocator::{Allocate, Allocator, Memory};
+    use super::allocator::Allocator;
     use super::vulkan::*;
     use crate::RendererResult;
     use ash::{Device, vk};
@@ -700,19 +662,19 @@ mod mesh {
     use std::mem::size_of;
 
     /// Vertex and index buffer resources for one frame in flight.
-    pub struct Mesh {
+    pub struct Mesh<A: Allocator> {
         pub vertices: vk::Buffer,
-        vertices_mem: Memory,
+        vertices_mem: A::Allocation,
         vertex_count: usize,
         pub indices: vk::Buffer,
-        indices_mem: Memory,
+        indices_mem: A::Allocation,
         index_count: usize,
     }
 
-    impl Mesh {
+    impl<A: Allocator> Mesh<A> {
         pub fn new(
             device: &Device,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             primitives: &[ClippedPrimitive],
         ) -> RendererResult<Self> {
             let vertices = create_vertices(primitives);
@@ -749,7 +711,7 @@ mod mesh {
         pub fn update(
             &mut self,
             device: &Device,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             primitives: &[ClippedPrimitive],
         ) -> RendererResult<()> {
             let vertices = create_vertices(primitives);
@@ -795,7 +757,7 @@ mod mesh {
             Ok(())
         }
 
-        pub fn destroy(self, device: &Device, allocator: &mut Allocator) -> RendererResult<()> {
+        pub fn destroy(self, device: &Device, allocator: &mut A) -> RendererResult<()> {
             allocator.destroy_buffer(device, self.vertices, self.vertices_mem)?;
             allocator.destroy_buffer(device, self.indices, self.indices_mem)?;
             Ok(())
@@ -846,7 +808,7 @@ mod mesh {
 /// (the standard computer graphics coordinate space)and the destination space is right-handed
 /// and y-down, with Z (depth) clip extending from 0.0 (close) to 1.0 (far).
 ///
-/// from: https://github.com/fu5ha/ultraviolet (to limit dependencies)
+/// from: <https://github.com/fu5ha/ultraviolet> (to limit dependencies)
 #[inline]
 pub fn orthographic_vk(
     left: f32,

@@ -51,7 +51,7 @@ When you target an sRGB framebuffer, the fragment shader will output linear colo
 
 ### Managed textures
 
-Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and 
+Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and
 `Renderer::free_textures`. The former must be call before submitting the command buffer for rendering and the latter must be
 called after rendering is complete. Example:
 
@@ -69,13 +69,13 @@ renderer.set_textures(queue, command_pool, output.textures_delta.set.as_slice())
 renderer.free_textures(output.textures_delta.free.as_slice()).unwrap();
 ```
 
-> If you have multiple frames in flight you might want to hold a set of textures to free for each frame and call 
+> If you have multiple frames in flight you might want to hold a set of textures to free for each frame and call
 `Renderer::free_textures` after waiting for the fence of the previous frame.
 
 ### Custom textures
 
 You can also render used managed textures in egui. You just need to call `Renderer::add_user_texture` and pass a
-`vk::DescriptorSet` compatible with the layout used in the renderer's graphics pipeline 
+`vk::DescriptorSet` compatible with the layout used in the renderer's graphics pipeline
 (see [create_vulkan_descriptor_set_layout](./src/renderer/vulkan.rs)). This will return a `egui::TextureId` that you
 can use in your ui code. Example:
 
@@ -99,25 +99,41 @@ let output = egui_ctx.run(raw_input, |ui| {
 renderer.remove_user_texture(texture_id);
 ```
 
-You can find a example using egui managed and user managed textures [here](./examples/textures.rs).
+Here is an [example using egui managed and user managed textures](./examples/textures.rs).
+
+## Allocators
+
+GPU memory allocations are made using allocators. An allocator in any type that implements [`allocator::Allocator`]. You can use one of
+the provided allocators or implement your own.
+
+### Default allocator
+
+Default allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. Created with [`Renderer::with_default_allocator`].
+
+### GPU Allocator
+
+Uses [gpu-allocator][gpu-allocator] to handle gpu memory. Created with [`Renderer::with_gpu_allocator`] which takes
+a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. Requires the `gpu-allocator` feature.
+
+### VkMem Allocator
+
+Uses [vk-mem-rs][vk-mem-rs] to handle gpu memory. Created with [`Renderer::with_vk_mem_allocator`] which takes
+a `Arc<vk_mem::Allocator>`. Requires the `vk-mem` feature.
+
+### Custom allocator
+
+You can pass your own allocator using [`Renderer::with_allocator`].
+
+Here is [an example of custom delegating allocator](./examples/common/renderer.rs).
+
+## Render mode
+
+The renderer supports rendering with a render pass or using dynamic rendering. It is done by passing `RenderMode` when creating the renderer.
 
 ## Features
 
-### gpu-allocator
-
-This feature adds support for [gpu-allocator][gpu-allocator]. It adds `Renderer::with_gpu_allocator` which takes
-a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. All internal allocator are then done using the allocator.
-
-### vk-mem
-
-This feature adds support for [vk-mem-rs][vk-mem-rs]. It adds `Renderer::with_vk_mem_allocator` which takes
-a `Arc<Mutex<vk_mem::Allocator>>`. All internal allocator are then done using the allocator.
-
-### dynamic-rendering
-
-This feature is useful if you want to integrate the library in an app making use of Vulkan's dynamic rendering.
-When enabled, functions that usually takes a `vk::RenderPass` as argument will now take a `DynamicRendering` which
-contains the format of the color attachment the UI will be drawn to and an optional depth attachment format.
+- **gpu-allocator** : Allow [gpu-allocator][gpu-allocator] allocator usage.
+- **vk-mem** : Allow [vk-mem-rs][vk-mem-rs] allocator usage.
 
 ## Integration
 
@@ -125,7 +141,7 @@ You can find an example of integration with [winit][winit] in the [common module
 
 ```rust
 // Example with default allocator
-let renderer = Renderer::with_default_allocator(
+let renderer : Renderer<DefaultAllocator> = Renderer::with_default_allocator(
     &vk_instance,
     vk_physical_device,
     vk_device.clone(),
@@ -164,3 +180,4 @@ cargo run --example <example>
 [gpu-allocator]: https://github.com/Traverse-Research/gpu-allocator
 [vk-mem-rs]: https://github.com/gwihlidal/vk-mem-rs
 [winit]: https://github.com/rust-windowing/winit
+[vk-allocate-memory]: https://registry.khronos.org/VulkanSC/specs/1.0-extensions/man/html/vkAllocateMemory.html

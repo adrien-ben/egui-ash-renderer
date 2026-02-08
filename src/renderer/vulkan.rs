@@ -3,7 +3,7 @@
 //! A set of functions used to ease Vulkan resources creations. These are supposed to be internal but
 //! are exposed since they might help users create descriptors sets when using the custom textures.
 
-use crate::{Options, RendererResult};
+use crate::{Options, RenderMode, RendererResult};
 use ash::{Device, vk};
 pub(crate) use buffer::*;
 use std::{
@@ -11,9 +11,6 @@ use std::{
     mem::{self, size_of},
 };
 pub(crate) use texture::*;
-
-#[cfg(feature = "dynamic-rendering")]
-use crate::DynamicRendering;
 
 /// Return a `&[u8]` for any sized object passed in.
 pub(crate) unsafe fn any_as_u8_slice<T: Sized>(any: &T) -> &[u8] {
@@ -62,8 +59,7 @@ pub(crate) fn create_vulkan_pipeline_layout(
 pub(crate) fn create_vulkan_pipeline(
     device: &Device,
     pipeline_layout: vk::PipelineLayout,
-    #[cfg(not(feature = "dynamic-rendering"))] render_pass: vk::RenderPass,
-    #[cfg(feature = "dynamic-rendering")] dynamic_rendering: DynamicRendering,
+    render_mode: RenderMode,
     options: Options,
 ) -> RendererResult<vk::Pipeline> {
     let entry_point_name = CString::new("main").unwrap();
@@ -200,40 +196,45 @@ pub(crate) fn create_vulkan_pipeline(
         .dynamic_state(&dynamic_states_info)
         .layout(pipeline_layout);
 
-    #[cfg(not(feature = "dynamic-rendering"))]
-    let pipeline_info = pipeline_info.render_pass(render_pass);
+    let pipelines = match render_mode {
+        RenderMode::RenderPass(render_pass) => {
+            let pipeline_info = pipeline_info.render_pass(render_pass);
 
-    #[cfg(feature = "dynamic-rendering")]
-    let color_attachment_formats = [dynamic_rendering.color_attachment_format];
-    #[cfg(feature = "dynamic-rendering")]
-    let mut rendering_info = {
-        let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
-            .color_attachment_formats(&color_attachment_formats);
-        if let Some(depth_attachment_format) = dynamic_rendering.depth_attachment_format {
-            rendering_info = rendering_info.depth_attachment_format(depth_attachment_format);
+            unsafe {
+                device.create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    std::slice::from_ref(&pipeline_info),
+                    None,
+                )
+            }
         }
-        if let Some(stencil_attachment_format) = dynamic_rendering.stencil_attachment_format {
-            rendering_info = rendering_info.stencil_attachment_format(stencil_attachment_format);
-        }
-        rendering_info
-    };
-    #[cfg(feature = "dynamic-rendering")]
-    let pipeline_info = pipeline_info.push_next(&mut rendering_info);
+        RenderMode::DynamicRendering(dynamic_rendering) => {
+            let color_attachment_formats = [dynamic_rendering.color_attachment_format];
 
-    let pipeline = unsafe {
-        device
-            .create_graphics_pipelines(
-                vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None,
-            )
-            .map_err(|e| e.1)?[0]
+            let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
+                .color_attachment_formats(&color_attachment_formats);
+            if let Some(depth_attachment_format) = dynamic_rendering.depth_attachment_format {
+                rendering_info = rendering_info.depth_attachment_format(depth_attachment_format);
+            }
+
+            let pipeline_info = pipeline_info.push_next(&mut rendering_info);
+
+            unsafe {
+                device.create_graphics_pipelines(
+                    vk::PipelineCache::null(),
+                    std::slice::from_ref(&pipeline_info),
+                    None,
+                )
+            }
+        }
     };
 
     unsafe {
         device.destroy_shader_module(vertex_module, None);
         device.destroy_shader_module(fragment_module, None);
     }
+
+    let pipeline = pipelines.map_err(|e| e.1)?[0];
 
     Ok(pipeline)
 }
@@ -301,19 +302,16 @@ pub fn create_vulkan_descriptor_set(
 
 mod buffer {
 
-    use crate::{
-        RendererResult,
-        renderer::allocator::{Allocate, Allocator, Memory},
-    };
+    use crate::{RendererResult, renderer::allocator::Allocator};
     use ash::Device;
     use ash::vk;
 
-    pub fn create_and_fill_buffer<T>(
+    pub fn create_and_fill_buffer<A: Allocator, T>(
         device: &Device,
-        allocator: &mut Allocator,
+        allocator: &mut A,
         data: &[T],
         usage: vk::BufferUsageFlags,
-    ) -> RendererResult<(vk::Buffer, Memory)>
+    ) -> RendererResult<(vk::Buffer, A::Allocation)>
     where
         T: Copy,
     {
@@ -328,24 +326,24 @@ mod texture {
 
     use super::buffer::*;
     use crate::RendererResult;
-    use crate::renderer::allocator::{Allocate, Allocator, Memory};
+    use crate::renderer::allocator::Allocator;
     use ash::Device;
     use ash::vk;
 
     /// Helper struct representing a sampled texture.
-    pub struct Texture {
+    pub struct Texture<A: Allocator> {
         pub image: vk::Image,
-        image_mem: Memory,
+        image_mem: A::Allocation,
         pub image_view: vk::ImageView,
         pub sampler: vk::Sampler,
     }
 
-    impl Texture {
+    impl<A: Allocator> Texture<A> {
         pub(crate) fn from_rgba8(
             device: &Device,
             queue: vk::Queue,
             command_pool: vk::CommandPool,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             width: u32,
             height: u32,
             data: &[u8],
@@ -362,12 +360,12 @@ mod texture {
 
         fn cmd_from_rgba(
             device: &Device,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             command_buffer: vk::CommandBuffer,
             width: u32,
             height: u32,
             data: &[u8],
-        ) -> RendererResult<(Self, vk::Buffer, Memory)> {
+        ) -> RendererResult<(Self, vk::Buffer, A::Allocation)> {
             let (image, image_mem) = allocator.create_image(device, width, height)?;
 
             let image_view = {
@@ -429,7 +427,7 @@ mod texture {
             device: &Device,
             queue: vk::Queue,
             command_pool: vk::CommandPool,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             region: vk::Rect2D,
             data: &[u8],
         ) -> RendererResult<()> {
@@ -447,10 +445,10 @@ mod texture {
             &mut self,
             device: &Device,
             command_buffer: vk::CommandBuffer,
-            allocator: &mut Allocator,
+            allocator: &mut A,
             region: vk::Rect2D,
             data: &[u8],
-        ) -> RendererResult<(vk::Buffer, Memory)> {
+        ) -> RendererResult<(vk::Buffer, A::Allocation)> {
             let (buffer, buffer_mem) = create_and_fill_buffer(
                 device,
                 allocator,
@@ -541,7 +539,7 @@ mod texture {
         }
 
         /// Free texture's resources.
-        pub fn destroy(self, device: &Device, allocator: &mut Allocator) -> RendererResult<()> {
+        pub fn destroy(self, device: &Device, allocator: &mut A) -> RendererResult<()> {
             unsafe {
                 device.destroy_sampler(self.sampler, None);
                 device.destroy_image_view(self.image_view, None);

@@ -1,14 +1,13 @@
-use super::Allocate;
 use crate::RendererResult;
 use ash::{Device, vk};
 use std::sync::Arc;
 use vk_mem::{
-    Alloc, Allocation, AllocationCreateFlags, AllocationCreateInfo, Allocator as VkMemAllocator,
-    MemoryUsage,
+    Alloc, Allocation as VmMemAllocation, AllocationCreateFlags, AllocationCreateInfo,
+    Allocator as VkMemAllocator, MemoryUsage,
 };
 
 /// Abstraction over memory used by Vulkan resources.
-pub type Memory = Allocation;
+type Allocation = VmMemAllocation;
 
 pub struct Allocator {
     pub allocator: Arc<VkMemAllocator>,
@@ -20,15 +19,15 @@ impl Allocator {
     }
 }
 
-impl Allocate for Allocator {
-    type Memory = Memory;
+impl super::Allocator for Allocator {
+    type Allocation = Allocation;
 
     fn create_buffer(
         &mut self,
         _device: &Device,
         size: usize,
         usage: vk::BufferUsageFlags,
-    ) -> RendererResult<(vk::Buffer, Self::Memory)> {
+    ) -> RendererResult<(vk::Buffer, Allocation)> {
         let buffer_info = vk::BufferCreateInfo::default()
             .size(size as _)
             .usage(usage)
@@ -53,7 +52,7 @@ impl Allocate for Allocator {
         _device: &Device,
         width: u32,
         height: u32,
-    ) -> RendererResult<(vk::Image, Self::Memory)> {
+    ) -> RendererResult<(vk::Image, Allocation)> {
         let extent = vk::Extent3D {
             width,
             height,
@@ -90,7 +89,7 @@ impl Allocate for Allocator {
         &mut self,
         _device: &Device,
         buffer: vk::Buffer,
-        mut memory: Self::Memory,
+        mut memory: Allocation,
     ) -> RendererResult<()> {
         unsafe { self.allocator.destroy_buffer(buffer, &mut memory) };
 
@@ -101,7 +100,7 @@ impl Allocate for Allocator {
         &mut self,
         _device: &Device,
         image: vk::Image,
-        mut memory: Self::Memory,
+        mut memory: Allocation,
     ) -> RendererResult<()> {
         unsafe { self.allocator.destroy_image(image, &mut memory) };
 
@@ -111,7 +110,7 @@ impl Allocate for Allocator {
     fn update_buffer<T: Copy>(
         &mut self,
         _device: &Device,
-        memory: &mut Self::Memory,
+        memory: &mut Allocation,
         data: &[T],
     ) -> RendererResult<()> {
         let size = std::mem::size_of_val(data) as _;

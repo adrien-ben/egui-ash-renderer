@@ -94,23 +94,39 @@
 //!
 //! You can find a example using egui managed and user managed textures [here](./examples/textures.rs).
 //!
+//! ## Allocators
+//!
+//! GPU memory allocations are made using allocators. An allocator in any type that implements [`allocator::Allocator`]. You can use one of
+//! the provided allocators or implement your own.
+//!
+//! ### Default allocator
+//!
+//! Default allocator using [vkAllocatorMemory][vk-allocate-memory] for each allocation. Created with [`Renderer::with_default_allocator`].
+//!
+//! ### GPU Allocator
+//!
+//! Uses [gpu-allocator][gpu-allocator] to handle gpu memory. Created with [`Renderer::with_gpu_allocator`] which takes
+//! a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. Requires the `gpu-allocator` feature.
+//!
+//! ### VkMem Allocator
+//!
+//! Uses [vk-mem-rs][vk-mem-rs] to handle gpu memory. Created with [`Renderer::with_vk_mem_allocator`] which takes
+//! a `Arc<vk_mem::Allocator>`. Requires the `vk-mem` feature.
+//!
+//! ### Custom allocator
+//!
+//! You can pass your own allocator using [`Renderer::with_allocator`].
+//!
+//! Here is [an example of custom delegating allocator](./examples/common/renderer.rs).
+//!
+//! ## Render mode
+//!
+//! The renderer supports rendering with a render pass or using dynamic rendering. It is done by passing `RenderMode` when creating the renderer.
+//!
 //! ## Features
 //!
-//! ### gpu-allocator
-//!
-//! This feature adds support for [gpu-allocator][gpu-allocator]. It adds `Renderer::with_gpu_allocator` which takes
-//! a `Arc<Mutex<gpu_allocator::vulkan::Allocator>>`. All internal allocator are then done using the allocator.
-//!
-//! ### vk-mem
-//!
-//! This feature adds support for [vk-mem-rs][vk-mem-rs]. It adds `Renderer::with_vk_mem_allocator` which takes
-//! a `Arc<vk_mem::Allocator>`. All internal allocator are then done using the allocator.
-//!
-//! ### dynamic-rendering
-//!
-//! This feature is useful if you want to integrate the library in an app making use of Vulkan's dynamic rendering.
-//! When enabled, functions that usually takes a `vk::RenderPass` as argument will now take a `DynamicRendering` which
-//! contains the format of the color attachment the UI will be drawn to and an optional depth attachment format.
+//! - **gpu-allocator** : Allow [gpu-allocator][gpu-allocator] allocator usage.
+//! - **vk-mem** : Allow [vk-mem-rs][vk-mem-rs] allocator usage.
 //!
 //! ## Integration
 //!
@@ -118,7 +134,7 @@
 //!
 //! ```rust
 //! // Example with default allocator
-//! let renderer = Renderer::with_default_allocator(
+//! let renderer : Renderer<DefaultAllocator> = Renderer::with_default_allocator(
 //!     &vk_instance,
 //!     vk_physical_device,
 //!     vk_device.clone(),
@@ -157,6 +173,7 @@
 //! [gpu-allocator]: https://github.com/Traverse-Research/gpu-allocator
 //! [vk-mem-rs]: https://github.com/gwihlidal/vk-mem-rs
 //! [winit]: https://github.com/rust-windowing/winit
+//! [vk-allocate-memory]: https://registry.khronos.org/VulkanSC/specs/1.0-extensions/man/html/vkAllocateMemory.html
 
 mod error;
 mod renderer;
