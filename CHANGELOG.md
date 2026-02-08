@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0
+
+### Breaking
+
+- Remove Debug derive from DynamicRendering by @mickvangelderen
+- Allow passing stencil attachment format for dynamic rendering by @mickvangelderen
+
 ## 0.11.0
 
 - Do not wrap vk_mem::Allocator in a Mutex by @BattyBoopers
