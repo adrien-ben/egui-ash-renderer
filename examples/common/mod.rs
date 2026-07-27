@@ -9,7 +9,7 @@ use ash::{
     khr::{surface, swapchain},
     vk,
 };
-use egui::{ClippedPrimitive, Context, TextureId, ViewportId};
+use egui::{ClippedPrimitive, Context, TextureId, Ui, ViewportId};
 use egui_ash_renderer::RenderMode;
 use egui_winit::State;
 use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -28,13 +28,13 @@ use winit::{
 
 use crate::common::renderer::AnyRenderer;
 
-const WIDTH: u32 = 1280;
-const HEIGHT: u32 = 1024;
+const WIDTH: u32 = 1920;
+const HEIGHT: u32 = 1080;
 
 pub trait App {
     fn title() -> &'static str;
     fn new(app: &mut System) -> Self;
-    fn build_ui(&mut self, ctx: &Context);
+    fn build_ui(&mut self, ctx: &mut Ui);
     fn clean(&mut self, vulkan_ctx: &VulkanContext) {
         let _ = vulkan_ctx;
     }
@@ -233,8 +233,8 @@ impl System {
             shapes,
             pixels_per_point,
             ..
-        } = self.egui_ctx.run(raw_input, |ctx| {
-            egui_app.build_ui(ctx);
+        } = self.egui_ctx.run_ui(raw_input, |ui| {
+            egui_app.build_ui(ui);
         });
 
         self.egui_winit

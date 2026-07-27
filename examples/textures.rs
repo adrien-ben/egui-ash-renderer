@@ -66,14 +66,14 @@ impl App for TexturesDemo {
         }
     }
 
-    fn build_ui(&mut self, ctx: &egui::Context) {
+    fn build_ui(&mut self, ui: &mut egui::Ui) {
         egui::Window::new("Managed texture")
-            .show(ctx, |ui| {
+            .show(ui, |ui| {
                 ui.label("This texture is loaded and managed by egui. Loaders must be installed for it to work.");
                 egui::Image::new(egui::include_image!("../assets/images/img1.jpg")).fit_to_original_size(0.8).ui(ui);
             });
 
-        egui::Window::new("Used defined texture").show(ctx, |ui| {
+        egui::Window::new("Used defined texture").show(ui, |ui| {
             ui.label("This texture is loaded and managed by the user.");
             ui.horizontal(|ui| {
                 ui.radio_value(&mut self.show_srgb_texture, true, "sRGB");

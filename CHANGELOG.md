@@ -4,6 +4,7 @@
 
 - Made `Allocator` trait public.
 - Added `Renderer::with_allocator` which can take any type implementing `Allocator`.
+- egui 0.35
 
 ### Breaking
 

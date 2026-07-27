@@ -14,8 +14,8 @@ impl App for DemoWindows {
         DemoWindows::default()
     }
 
-    fn build_ui(&mut self, ctx: &egui::Context) {
-        self.ui(ctx);
+    fn build_ui(&mut self, ui: &mut egui::Ui) {
+        self.ui(ui);
     }
 }
 
