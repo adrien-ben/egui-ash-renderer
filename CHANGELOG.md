@@ -1,6 +1,6 @@
 # Changelog
 
-## current
+## 0.12.0
 
 - Made `Allocator` trait public.
 - Added `Renderer::with_allocator` which can take any type implementing `Allocator`.
@@ -8,17 +8,12 @@
 
 ### Breaking
 
+- Remove Debug derive from DynamicRendering by @mickvangelderen
+- Allow passing stencil attachment format for dynamic rendering by @mickvangelderen
 - Renderer is now generic over the `Allocator` trait.
 - Remove `dynamic-rendering` feature.
 - Functions that used to take `vk::RenderPass` or `DynamicRendering` now take `RenderMode` instead.
 - Replaced `Renderer::set_dynamic_rendering` and `Renderer::set_render_pass` with `Renderer::set_render_mode`
-
-## 0.12.0
-
-### Breaking
-
-- Remove Debug derive from DynamicRendering by @mickvangelderen
-- Allow passing stencil attachment format for dynamic rendering by @mickvangelderen
 
 ## 0.11.0
 
