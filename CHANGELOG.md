@@ -10,6 +10,7 @@
 - Renderer is now generic over the `Allocator` trait.
 - Remove `dynamic-rendering` feature.
 - Functions that used to take `vk::RenderPass` or `DynamicRendering` now take `RenderMode` instead.
+- Replaced `Renderer::set_dynamic_rendering` and `Renderer::set_render_pass` with `Renderer::set_render_mode`
 
 ## 0.12.0
 
