@@ -18,24 +18,32 @@ log = "0.4"
 egui = { version = "0.33", default-features = false }
 ash = { version = "0.38", default-features = false, features = ["std"] }
 
-gpu-allocator = { version = "0.28", default-features = false, features = ["std", "vulkan"], optional = true }
+gpu-allocator = { version = "0.28", default-features = false, features = [
+    "std",
+    "vulkan",
+], optional = true }
 vk-mem = { version = "0.5", optional = true }
 
 [features]
 default = []
-dynamic-rendering = []
 gpu-allocator = ["dep:gpu-allocator"]
 vk-mem = ["dep:vk-mem"]
 
 [dev-dependencies]
+cfg-if = "1.0"
 simple_logger = "5.0"
 winit = "0.30"
-ash = { version = "0.38", default-features = false, features = ["debug", "linked", "std"] }
+ash = { version = "0.38", default-features = false, features = [
+    "debug",
+    "linked",
+    "std",
+] }
 ash-window = "0.13"
 raw-window-handle = "0.6"
 image = "0.25"
 egui = "0.33"
 egui-winit = "0.33"
 egui_demo_lib = "0.33"
-egui_extras = { version = "0.33", default-features = false, features = ["all_loaders"] }
-egui-ash-renderer = { path = ".", features = []}
+egui_extras = { version = "0.33", default-features = false, features = [
+    "all_loaders",
+] }
