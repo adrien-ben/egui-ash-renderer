@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.0
+
+- egui 0.36
+- Deprecated `Renderer::set_textures` and `Renderer::free_textures`.
+- Added `Renderer::set_texture` and `Renderer::free_texture`.
+
 ## 0.12.0
 
 - Made `Allocator` trait public.

@@ -1,6 +1,7 @@
 mod renderer;
 pub mod vulkan;
 
+use ahash::{HashSet, HashSetExt};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use ash::vk::{KhrGetPhysicalDeviceProperties2Fn, KhrPortabilityEnumerationFn};
 use ash::{
@@ -26,7 +27,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::common::renderer::AnyRenderer;
+use renderer::AnyRenderer;
 
 const WIDTH: u32 = 1920;
 const HEIGHT: u32 = 1080;
@@ -111,7 +112,7 @@ pub struct System {
     pub egui_winit: State,
     pub renderer: AnyRenderer,
 
-    textures_to_free: Option<Vec<TextureId>>,
+    textures_to_free: HashSet<TextureId>,
 
     pub vulkan_context: VulkanContext,
 }
@@ -187,7 +188,7 @@ impl System {
             egui_winit,
             renderer,
 
-            textures_to_free: None,
+            textures_to_free: HashSet::new(),
         })
     }
 
@@ -220,8 +221,8 @@ impl System {
         };
 
         // Free last frames textures after the previous frame is done rendering
-        if let Some(textures) = self.textures_to_free.take() {
-            self.renderer.free_textures(&textures);
+        for id in self.textures_to_free.drain() {
+            self.renderer.free_texture(id);
         }
 
         // Generate UI
@@ -229,7 +230,7 @@ impl System {
 
         let egui::FullOutput {
             platform_output,
-            textures_delta,
+            mut textures_delta,
             shapes,
             pixels_per_point,
             ..
@@ -240,16 +241,19 @@ impl System {
         self.egui_winit
             .handle_platform_output(&window, platform_output);
 
-        if !textures_delta.free.is_empty() {
-            self.textures_to_free = Some(textures_delta.free.clone());
+        for (id, deltas) in textures_delta.set.drain() {
+            for delta in deltas {
+                self.renderer.set_texture(
+                    self.vulkan_context.graphics_queue,
+                    self.vulkan_context.command_pool,
+                    id,
+                    &delta,
+                );
+            }
         }
 
-        if !textures_delta.set.is_empty() {
-            self.renderer.set_textures(
-                self.vulkan_context.graphics_queue,
-                self.vulkan_context.command_pool,
-                textures_delta.set.as_slice(),
-            );
+        for id in textures_delta.free.drain() {
+            self.textures_to_free.insert(id);
         }
 
         let clipped_primitives = self.egui_ctx.tessellate(shapes, pixels_per_point);

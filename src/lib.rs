@@ -8,6 +8,7 @@
 //!
 //! | crate  | egui         | ash          | gpu-allocator (feature) | vk-mem (feature) |
 //! |--------|--------------|--------------|-------------------------|------------------|
+//! | 0.13.0 | 0.36         | 0.38         | 0.28                    | 0.5              |
 //! | 0.12.0 | 0.35         | 0.38         | 0.28                    | 0.5              |
 //! | 0.11.0 | 0.33         | 0.38         | 0.28                    | 0.5              |
 //! | 0.10.0 | 0.33         | 0.38         | 0.28                    | 0.5              |
@@ -44,8 +45,8 @@
 //!
 //! ### Managed textures
 //!
-//! Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_textures` and
-//! `Renderer::free_textures`. The former must be call before submitting the command buffer for rendering and the latter must be
+//! Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_texture` and
+//! `Renderer::free_texture`. The former must be call before submitting the command buffer for rendering and the latter must be
 //! called after rendering is complete. Example:
 //!
 //! ```rust
@@ -54,16 +55,22 @@
 //! });
 //!
 //! // before rendering the ui
-//! renderer.set_textures(queue, command_pool, output.textures_delta.set.as_slice()).unwrap();
+//! for (id, deltas) in output.textures_delta.set.drain() {
+//!     for delta in deltas {
+//!         renderer.set_texture(queue, command_pool, id, &delta).unwrap();
+//!     }
+//! }
 //!
 //! // rendering code goes here .. (calling cmd_draw, submitting the command buffer, waiting for rendering to be finished...)
 //!
 //! // after the rendering is done
-//! renderer.free_textures(output.textures_delta.free.as_slice()).unwrap();
+//! for id in output.textures_delta.free.drain() {
+//!     renderer.free_texture(id);
+//! }
 //! ```
 //!
 //! > If you have multiple frames in flight you might want to hold a set of textures to free for each frame and call
-//! `Renderer::free_textures` after waiting for the fence of the previous frame.
+//! `Renderer::free_texture` after waiting for the fence of the previous frame.
 //!
 //! ### Custom textures
 //!
@@ -164,7 +171,7 @@
 //! cargo run --example <example>
 //!
 //! # Example can be one of the following value:
-//! # - demo_windows
+//! # - demo
 //! # - textures
 //! ```
 //!

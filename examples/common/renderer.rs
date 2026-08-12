@@ -104,29 +104,30 @@ impl AnyRenderer {
         .expect("Failed to rebuild renderer pipeline");
     }
 
-    pub fn free_textures(&mut self, ids: &[TextureId]) {
+    pub fn free_texture(&mut self, id: TextureId) {
         match self {
-            AnyRenderer::Default(r) => r.free_textures(ids),
+            AnyRenderer::Default(r) => r.free_texture(id),
             #[cfg(feature = "gpu-allocator")]
-            AnyRenderer::Gpu(r) => r.free_textures(ids),
+            AnyRenderer::Gpu(r) => r.free_texture(id),
             #[cfg(feature = "vk-mem")]
-            AnyRenderer::VkMem(r) => r.free_textures(ids),
+            AnyRenderer::VkMem(r) => r.free_texture(id),
         }
         .expect("Failed to free textures");
     }
 
-    pub fn set_textures(
+    pub fn set_texture(
         &mut self,
         queue: vk::Queue,
         command_pool: vk::CommandPool,
-        textures_delta: &[(TextureId, ImageDelta)],
+        id: TextureId,
+        delta: &ImageDelta,
     ) {
         match self {
-            AnyRenderer::Default(r) => r.set_textures(queue, command_pool, textures_delta),
+            AnyRenderer::Default(r) => r.set_texture(queue, command_pool, id, delta),
             #[cfg(feature = "gpu-allocator")]
-            AnyRenderer::Gpu(r) => r.set_textures(queue, command_pool, textures_delta),
+            AnyRenderer::Gpu(r) => r.set_texture(queue, command_pool, id, delta),
             #[cfg(feature = "vk-mem")]
-            AnyRenderer::VkMem(r) => r.set_textures(queue, command_pool, textures_delta),
+            AnyRenderer::VkMem(r) => r.set_texture(queue, command_pool, id, delta),
         }
         .expect("Failed to update texture")
     }
