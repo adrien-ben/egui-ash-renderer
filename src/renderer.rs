@@ -269,20 +269,22 @@ impl<A: Allocator> Renderer<A> {
         Ok(())
     }
 
-    /// Free egui managed textures.
+    /// Set egui managed textures.
     ///
     /// You should pass the list of textures detla contained in the [`egui::TexturesDelta::set`].
     /// This method should be called _before_ the frame starts rendering.
     ///
     /// # Arguments
     ///
-    /// * `ids` - The list of ids of textures to free.
     /// * `queue` - The queue used to copy image data on the GPU.
     /// * `command_pool` - A Vulkan command pool used to allocate command buffers to upload textures to the gpu.
     /// * `textures_delta` - The modifications to apply to the textures.
     /// # Errors
     ///
     /// * [`RendererError`] - If any Vulkan error is encountered during pipeline creation.
+    #[deprecated(
+        note = "egui 0.36 changed the way texture deltas are handled. Use set_texture instead."
+    )]
     pub fn set_textures(
         &mut self,
         queue: vk::Queue,
@@ -291,72 +293,99 @@ impl<A: Allocator> Renderer<A> {
     ) -> RendererResult<()> {
         log::trace!("Setting {} textures", textures_delta.len());
         for (id, delta) in textures_delta {
-            let (width, height, data) = match &delta.image {
-                ImageData::Color(image) => {
-                    let w = image.width() as u32;
-                    let h = image.height() as u32;
-                    let data = image
-                        .pixels
-                        .iter()
-                        .flat_map(|c| c.to_array())
-                        .collect::<Vec<_>>();
+            self.set_texture(queue, command_pool, *id, delta)?;
+        }
+        Ok(())
+    }
 
-                    (w, h, data)
-                }
-            };
+    /// Set a egui managed texture.
+    ///
+    /// You should pass one of the textures detla contained in the [`egui::TexturesDelta::set`] alog with its id.
+    /// This method should be called _before_ the frame starts rendering.
+    ///
+    /// # Arguments
+    ///
+    /// * `queue` - The queue used to copy image data on the GPU.
+    /// * `command_pool` - A Vulkan command pool used to allocate command buffers to upload textures to the gpu.
+    /// * `id` - The id of the new texture modification.
+    /// * `delta` - The modification to apply to the texture.
+    /// # Errors
+    ///
+    /// * [`RendererError`] - If any Vulkan error is encountered during pipeline creation.
+    pub fn set_texture(
+        &mut self,
+        queue: vk::Queue,
+        command_pool: vk::CommandPool,
+        id: TextureId,
+        delta: &ImageDelta,
+    ) -> RendererResult<()> {
+        log::trace!("Setting {:?} texture", id);
 
-            if let Some([offset_x, offset_y]) = delta.pos {
-                log::trace!("Updating texture {id:?}");
+        let (width, height, data) = match &delta.image {
+            ImageData::Color(image) => {
+                let w = image.width() as u32;
+                let h = image.height() as u32;
+                let data = image
+                    .pixels
+                    .iter()
+                    .flat_map(|c| c.to_array())
+                    .collect::<Vec<_>>();
 
-                let texture = self
-                    .managed_textures
-                    .get_mut(id)
-                    .ok_or(RendererError::BadTexture(*id))?;
+                (w, h, data)
+            }
+        };
 
-                texture.update(
-                    &self.device,
-                    queue,
-                    command_pool,
-                    &mut self.allocator,
-                    vk::Rect2D {
-                        offset: vk::Offset2D {
-                            x: offset_x as _,
-                            y: offset_y as _,
-                        },
-                        extent: vk::Extent2D { width, height },
+        if let Some([offset_x, offset_y]) = delta.pos {
+            log::trace!("Updating texture {id:?}");
+
+            let texture = self
+                .managed_textures
+                .get_mut(&id)
+                .ok_or(RendererError::BadTexture(id))?;
+
+            texture.update(
+                &self.device,
+                queue,
+                command_pool,
+                &mut self.allocator,
+                vk::Rect2D {
+                    offset: vk::Offset2D {
+                        x: offset_x as _,
+                        y: offset_y as _,
                     },
-                    data.as_slice(),
-                )?;
-            } else {
-                log::trace!("Adding texture {id:?}");
+                    extent: vk::Extent2D { width, height },
+                },
+                data.as_slice(),
+            )?;
+        } else {
+            log::trace!("Adding texture {id:?}");
 
-                let texture = Texture::from_rgba8(
-                    &self.device,
-                    queue,
-                    command_pool,
-                    &mut self.allocator,
-                    width,
-                    height,
-                    data.as_slice(),
-                )?;
+            let texture = Texture::from_rgba8(
+                &self.device,
+                queue,
+                command_pool,
+                &mut self.allocator,
+                width,
+                height,
+                data.as_slice(),
+            )?;
 
-                let set = create_vulkan_descriptor_set(
-                    &self.device,
-                    self.descriptor_set_layout,
-                    self.descriptor_pool,
-                    texture.image_view,
-                    texture.sampler,
-                )?;
+            let set = create_vulkan_descriptor_set(
+                &self.device,
+                self.descriptor_set_layout,
+                self.descriptor_pool,
+                texture.image_view,
+                texture.sampler,
+            )?;
 
-                if let Some(previous) = self.managed_textures.insert(*id, texture) {
-                    previous.destroy(&self.device, &mut self.allocator)?;
-                }
-                if let Some(previous) = self.textures.insert(*id, set) {
-                    unsafe {
-                        self.device
-                            .free_descriptor_sets(self.descriptor_pool, &[previous])?
-                    };
-                }
+            if let Some(previous) = self.managed_textures.insert(id, texture) {
+                previous.destroy(&self.device, &mut self.allocator)?;
+            }
+            if let Some(previous) = self.textures.insert(id, set) {
+                unsafe {
+                    self.device
+                        .free_descriptor_sets(self.descriptor_pool, &[previous])?
+                };
             }
         }
 
@@ -375,18 +404,40 @@ impl<A: Allocator> Renderer<A> {
     /// # Errors
     ///
     /// * [`RendererError`] - If any Vulkan error is encountered when free the texture.
+    #[deprecated(
+        note = "egui 0.36 changed the way texture deltas are handled. Use free_texture instead."
+    )]
     pub fn free_textures(&mut self, ids: &[TextureId]) -> RendererResult<()> {
         log::trace!("Freeing {} textures", ids.len());
         for id in ids {
-            if let Some(texture) = self.managed_textures.remove(id) {
-                texture.destroy(&self.device, &mut self.allocator)?;
-            }
-            if let Some(set) = self.textures.remove(id) {
-                unsafe {
-                    self.device
-                        .free_descriptor_sets(self.descriptor_pool, &[set])?
-                };
-            }
+            self.free_texture(*id)?;
+        }
+
+        Ok(())
+    }
+
+    /// Free one egui managed texture.
+    ///
+    /// You should pass a texture id contained in the [`egui::TexturesDelta::free`].
+    /// This method should be called _after_ the frame is done rendering.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The id of the texture to free.
+    ///
+    /// # Errors
+    ///
+    /// * [`RendererError`] - If any Vulkan error is encountered when free the texture.
+    pub fn free_texture(&mut self, id: TextureId) -> RendererResult<()> {
+        log::trace!("Freeing {:?} texture", id);
+        if let Some(texture) = self.managed_textures.remove(&id) {
+            texture.destroy(&self.device, &mut self.allocator)?;
+        }
+        if let Some(set) = self.textures.remove(&id) {
+            unsafe {
+                self.device
+                    .free_descriptor_sets(self.descriptor_pool, &[set])?
+            };
         }
 
         Ok(())
