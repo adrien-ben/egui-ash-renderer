@@ -53,7 +53,7 @@ When you target an sRGB framebuffer, the fragment shader will output linear colo
 ### Managed textures
 
 Textures managed by egui must be kept in sync with the renderer. To do so, the user should call `Renderer::set_texture` and
-`Renderer::free_texture`. The former must be call before submitting the command buffer for rendering and the latter must be
+`Renderer::free_texture`. The former must be called before submitting the command buffer for rendering and the latter must be
 called after rendering is complete. Example:
 
 ```rust
